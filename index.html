@@ -58,9 +58,9 @@ body{font-family:system-ui,sans-serif;background:#020617;color:#f1f5f9}
     <div class="gp p-3 rounded-xl"><div id="sP" class="text-3xl font-black text-emerald-400">0</div><div class="text-xs text-slate-400">Present</div></div>
     <div class="gp p-3 rounded-xl"><div id="sA" class="text-3xl font-black text-red-400">0</div><div class="text-xs text-slate-400">Absent / Not in</div></div>
     <div class="gp p-3 rounded-xl"><div id="sL" class="text-3xl font-black text-yellow-400">0</div><div class="text-xs text-slate-400">Late / Half</div></div></div>
-   <button onclick="sendWA()" class="bg-green-600 px-5 py-2.5 rounded-xl font-bold mb-4">WhatsApp Report</button>
+   <div class="flex flex-wrap gap-2 mb-4"><button onclick="sendWA()" class="bg-green-600 px-5 py-2.5 rounded-xl font-bold">💬 WhatsApp Report</button><button onclick="dlTodayPDF()" class="bg-red-600 px-5 py-2.5 rounded-xl font-bold">📄 PDF</button></div>
    <div id="holNote" class="text-amber-400 text-sm mb-2"></div>
-   <div class="gp rounded-xl overflow-x-auto"><table class="w-full text-left text-sm"><thead class="bg-slate-800/60 text-xs uppercase"><tr><th class="p-3">Staff</th><th class="p-3">IN / OUT</th><th class="p-3">Status (tap to correct)</th></tr></thead><tbody id="todayTb" class="divide-y divide-slate-800"></tbody></table></div></div>
+   <div class="gp rounded-xl overflow-x-auto"><table class="w-full text-left text-sm"><thead class="bg-slate-800/60 text-xs uppercase"><tr><th class="p-3">Staff</th><th class="p-3">IN</th><th class="p-3">OUT</th><th class="p-3">Status (tap to correct)</th></tr></thead><tbody id="todayTb" class="divide-y divide-slate-800"></tbody></table></div></div>
   <div id="t-pay" class="tc hidden">
    <div class="gp p-4 rounded-xl mb-4 flex flex-wrap gap-3 items-center justify-between">
     <div><div class="font-bold">Monthly Payroll</div><div class="text-xs text-slate-400">Sundays/holidays paid. Grace till 8:00. 3 lates = ½ day. Reports list every date.</div></div>
@@ -94,7 +94,14 @@ body{font-family:system-ui,sans-serif;background:#020617;color:#f1f5f9}
 <!-- OPERATOR -->
 <div id="rec" class="ov">
  <div class="bg-slate-900 border-b border-slate-800 p-3 flex justify-between items-center"><h2 class="font-black">➕ Staff Registration</h2><button onclick="closeRec()" class="px-3 py-1 bg-slate-800 rounded-lg">✕</button></div>
- <div class="flex-1 overflow-y-auto p-4 flex justify-center"><div class="gp p-5 rounded-2xl w-full max-w-md h-fit space-y-3">
+ <div class="flex-1 overflow-y-auto p-4 flex flex-col items-center gap-4">
+  <div class="gp p-4 rounded-2xl w-full max-w-md space-y-2 border border-emerald-500/40">
+   <div class="font-bold">📋 Today's Attendance Report</div>
+   <div id="opSum" class="text-xs text-slate-300"></div>
+   <button onclick="sendWA()" class="w-full bg-green-600 py-3 rounded-xl font-bold">💬 Send WhatsApp to Admin</button>
+   <div class="grid grid-cols-2 gap-2"><button onclick="dlTodayPDF()" class="bg-red-600 py-2 rounded-xl font-bold text-sm">📄 Download PDF</button><button onclick="shareTodayPDF()" class="bg-slate-700 py-2 rounded-xl font-bold text-sm">📤 Share PDF</button></div>
+   <div class="text-[11px] text-slate-500">Lists who came, IN/OUT times and who is absent. OUT -- = not punched out yet.</div></div>
+  <div class="gp p-5 rounded-2xl w-full max-w-md h-fit space-y-3"><div class="font-bold">➕ Register new staff</div>
   <input id="rName" class="inp" placeholder="Full name">
   <select id="rCat" class="inp"><option value="Teacher">Teacher</option><option value="Driver">Driver</option><option value="Maid">Maid</option><option value="Helper">Helping Staff / Other Helper</option></select>
   <input id="rRole" class="inp" placeholder="Role (e.g. Maths Teacher, Bus Driver)">
@@ -108,6 +115,7 @@ body{font-family:system-ui,sans-serif;background:#020617;color:#f1f5f9}
    <button id="rSaveBtn" onclick="saveNewStaff()" class="w-full bg-emerald-600 py-3 rounded-lg font-bold mt-2 hidden">Save & Register</button></div></div></div></div>
 
 <!-- MODALS -->
+<div id="waM" class="md"><div class="bg-slate-900 border border-slate-700 rounded-2xl p-5 w-full max-w-xs"><h3 class="font-bold mb-3 text-center">Send report to…</h3><div id="waList" class="space-y-2"></div><button onclick="$('waM').classList.remove('on')" class="w-full mt-3 bg-slate-700 py-2 rounded-xl">Cancel</button></div></div>
 <div id="pinM" class="md"><div class="bg-slate-900 border border-slate-700 rounded-2xl p-5 w-full max-w-xs text-center">
  <h3 class="font-bold mb-3">Enter PIN</h3><input id="pinI" type="password" inputmode="numeric" class="inp text-center text-2xl tracking-widest mb-3" onkeydown="if(event.key==='Enter')checkPin()">
  <div class="flex gap-2"><button onclick="$('pinM').classList.remove('on')" class="flex-1 bg-slate-700 py-2 rounded-xl">Cancel</button><button onclick="checkPin()" class="flex-1 bg-blue-600 py-2 rounded-xl">Verify</button></div></div></div>
@@ -222,16 +230,16 @@ window.tab=t=>{cur=t;document.querySelectorAll('.tc').forEach(e=>e.classList.add
  document.querySelectorAll('.tbn').forEach(b=>b.className='tbn px-3 py-2 rounded-lg text-sm font-bold bg-slate-800 text-slate-300');
  $('tb-'+t).className='tbn px-3 py-2 rounded-lg text-sm font-bold bg-blue-600 text-white';
  if(t==='pay'&&!$('payMonth').value)$('payMonth').value=ld().slice(0,7);refreshAdmin()};
-function refreshAdmin(){if(!$('admin').classList.contains('on'))return;
+function refreshAdmin(){if($('rec').classList.contains('on'))opSummary();if(!$('admin').classList.contains('on'))return;
  ({today:renderToday,pay:loadPay,staff:renderStaff,cal:renderCal,set:()=>{}})[cur]()}
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function renderToday(){const ds=ld(),rs=A[ds]||{};let p=0,a=0,l=0,h='';
  {const P=SP(ds);$('holNote').textContent=isOff(ds)?'🎉 Today is '+(S.holidays[ds]||'Sunday')+' (holiday)':`${seasonFor(ds)} timing: start ${P.start}, grace ${P.grace} min, closes ${P.close}`}
  S.staff.forEach(s=>{const r=rs[s.id];const st=r?r.status:'-';
   if(st==='Present')p++;else if(st==='Late'||st==='Half-Day')l++;else a++;
-  h+=`<tr><td class="p-3"><b>${esc(s.name)}</b><div class="text-xs text-slate-400">${esc(s.id)} · ${catName(s.cat)} · ${esc(s.role)}</div></td><td class="p-3">${r?.inTime||'--'} / ${r?.outTime||'--'}</td><td class="p-3"><select class="bg-slate-800 border border-slate-700 rounded p-1" onchange="setStatus('${s.id}',this.value)">${['-','Present','Late','Half-Day','Absent'].map(o=>`<option ${o===st?'selected':''}>${o}</option>`).join('')}</select></td></tr>`});
+  h+=`<tr><td class="p-3"><b>${esc(s.name)}</b><div class="text-xs text-slate-400">${esc(s.id)} · ${catName(s.cat)} · ${esc(s.role)}</div></td><td class="p-3 font-bold text-emerald-300">${r?.inTime||'--'}</td><td class="p-3 font-bold text-sky-300">${r?.outTime||'--'}</td><td class="p-3"><select class="bg-slate-800 border border-slate-700 rounded p-1" onchange="setStatus('${s.id}',this.value)">${['-','Present','Late','Half-Day','Absent'].map(o=>`<option ${o===st?'selected':''}>${o}</option>`).join('')}</select></td></tr>`});
  $('sT').textContent=S.staff.length;$('sP').textContent=p;$('sA').textContent=a;$('sL').textContent=l;
- $('todayTb').innerHTML=h||'<tr><td class="p-4 text-slate-500" colspan="3">No staff yet. Use Operator → register staff.</td></tr>'}
+ $('todayTb').innerHTML=h||'<tr><td class="p-4 text-slate-500" colspan="4">No staff yet. Use Operator → register staff.</td></tr>'}
 window.setStatus=(id,v)=>{if(v==='-')return;const ds=ld();A[ds]=A[ds]||{};const r=A[ds][id]||{inTime:null,outTime:null};r.status=v;r.manual=true;A[ds][id]=r;saveAtt(ds,id);toast('Status updated','s');renderToday()};
 
 /* ---------- Payroll ---------- */
@@ -346,15 +354,32 @@ window.restore=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader
  A=d.A||d.attendanceRecords||A;saveCore();
  if(db)for(const dt in A)for(const id in A[dt])saveAtt(dt,id);
  toast('Restored','s');setTimeout(()=>location.reload(),1200)}catch(x){toast('Invalid backup file','e')}};r.readAsText(f)};
-window.sendWA=()=>{const ds=ld(),rs=A[ds]||{};let p=0,a=0,l=0,t=`🏫 *DSB ATTENDANCE* - ${ds}\n\n`;
- S.staff.forEach(s=>{const r=rs[s.id];const st=r?r.status:'Absent';if(st==='Present')p++;else if(st==='Late'||st==='Half-Day')l++;else a++;t+=`• ${s.name} (${s.id}): ${st} (IN ${r?.inTime||'--'} | OUT ${r?.outTime||'--'})\n`});
- t+=`\n✅ Present: ${p}\n⚠️ Late/HD: ${l}\n❌ Absent: ${a}`;
- const ph=(S.settings.phones||'').split(',')[0].trim().replace(/\D/g,'');
- window.open(`https://api.whatsapp.com/send?phone=${ph}&text=${encodeURIComponent(t)}`,'_blank')};
+function todayData(){const ds=ld(),rs=A[ds]||{},o={Present:[],Late:[],'Half-Day':[],Absent:[]};
+ S.staff.forEach(s=>{const r=rs[s.id],st=r&&o[r.status]?r.status:'Absent';o[st].push({s,in:r?.inTime||'--',out:r?.outTime||'--'})});return{ds,o}}
+function reportText(){const{ds,o}=todayData();const dn=new Date(ds+'T00:00:00').toLocaleDateString('en-IN',{weekday:'long'});
+ let t=`🏫 *Delhi School of Brilliants*\n📋 *Attendance Report*\n📅 ${fd(ds)} (${dn})\n`;if(isOff(ds))t+=`🎉 Holiday: ${S.holidays[ds]||'Sunday'}\n`;
+ const line=x=>`• ${x.s.name} (${x.s.id}) - IN ${x.in} | OUT ${x.out}`;
+ const sec=(k,ic,lab,f)=>{if(o[k].length)t+=`\n${ic} *${lab} (${o[k].length})*\n`+o[k].map(f).join('\n')+'\n'};
+ sec('Present','✅','Present',line);sec('Late','⚠️','Late',line);sec('Half-Day','🌓','Half-Day',line);sec('Absent','❌','Absent / Not arrived',x=>`• ${x.s.name} (${x.s.id}) - ${catName(x.s.cat)}`);
+ return t+`\n📊 Total ${S.staff.length} | Present ${o.Present.length} | Late ${o.Late.length} | Half-Day ${o['Half-Day'].length} | Absent ${o.Absent.length}\n(OUT -- = not punched out yet)`}
+function opSummary(){const{o}=todayData();$('opSum').textContent=`Today: Present ${o.Present.length} · Late ${o.Late.length} · Half-day ${o['Half-Day'].length} · Absent/Not arrived ${o.Absent.length} (of ${S.staff.length})`}
+window.waOpen=p=>window.open(p?`https://wa.me/${p}?text=${window._waT}`:`https://wa.me/?text=${window._waT}`,'_blank');
+window.sendWA=()=>{if(!S.staff.length)return toast('No staff registered yet','e');window._waT=encodeURIComponent(reportText());
+ const ph=(S.settings.phones||'').split(',').map(p=>p.replace(/\D/g,'')).filter(Boolean).map(p=>p.length===10?'91'+p:p);
+ if(ph.length===0)return waOpen('');if(ph.length===1)return waOpen(ph[0]);
+ $('waList').innerHTML=ph.map(p=>`<button onclick="waOpen('${p}')" class="w-full bg-green-600 py-2 rounded-xl font-bold">Send to +${p}</button>`).join('')+`<button onclick="waOpen('')" class="w-full bg-slate-700 py-2 rounded-xl">Choose another contact</button>`;$('waM').classList.add('on')};
+function todayPDF(){const{ds,o}=todayData();const d=new window.jspdf.jsPDF();d.setFontSize(14);d.text('Delhi School of Brilliants - Attendance Report',14,15);d.setFontSize(10);
+ d.text(`${fd(ds)}   Total ${S.staff.length} | Present ${o.Present.length} | Late ${o.Late.length} | Half-Day ${o['Half-Day'].length} | Absent ${o.Absent.length}`,14,22);
+ const body=[];['Present','Late','Half-Day','Absent'].forEach(k=>o[k].forEach(x=>body.push([x.s.id,x.s.name,catName(x.s.cat),k,x.in,x.out])));
+ d.autoTable({startY:27,styles:{fontSize:9},head:[['Code','Name','Category','Status','IN','OUT']],body});return d}
+window.dlTodayPDF=()=>{if(!S.staff.length)return toast('No staff registered yet','e');todayPDF().save(`DSB_Attendance_${ld()}.pdf`);toast('PDF downloaded','s')};
+window.shareTodayPDF=async()=>{if(!S.staff.length)return toast('No staff registered yet','e');const d=todayPDF(),f=new File([d.output('blob')],`DSB_Attendance_${ld()}.pdf`,{type:'application/pdf'});
+ try{if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:'DSB Attendance '+fd(ld())});return}}catch(e){if(e.name==='AbortError')return}
+ d.save(f.name);toast('PDF downloaded - attach it in WhatsApp','s')};
 
 /* ---------- Registration ---------- */
 let rStream=null,samples=[],photo=null;
-async function openRec(){$('rec').classList.add('on');$('rSaveBtn').classList.add('hidden');$('rScanBtn').classList.remove('hidden');$('rScanBtn').disabled=false;$('rimg').classList.add('hidden');$('rbar').style.width=0;samples=[];photo=null;
+async function openRec(){$('rec').classList.add('on');opSummary();$('rSaveBtn').classList.add('hidden');$('rScanBtn').classList.remove('hidden');$('rScanBtn').disabled=false;$('rimg').classList.add('hidden');$('rbar').style.width=0;samples=[];photo=null;
  $('rName').value='';$('rRole').value='';try{rStream=await camera($('rv'))}catch(e){toast('Camera denied','e')}}
 window.closeRec=()=>{$('rec').classList.remove('on');rStream&&rStream.getTracks().forEach(t=>t.stop())};
 window.deepScan=async()=>{if(!ready)return toast('AI still loading','e');const b=$('rScanBtn');b.disabled=true;samples=[];photo=null;const v=$('rv');$('rmsg').textContent='Scanning... move head slightly';

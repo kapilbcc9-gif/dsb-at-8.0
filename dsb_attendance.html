@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DSB Smart Attendance Kiosk</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.min.js"></script>
+<style>
+body{font-family:system-ui,sans-serif;background:#020617;color:#f1f5f9}
+.gp{background:rgba(30,41,59,.7);border:1px solid rgba(255,255,255,.1)}
+.vc{width:260px;height:260px;border-radius:50%;object-fit:cover;transform:scaleX(-1);border:4px solid #3b82f6;box-shadow:0 0 30px rgba(59,130,246,.5)}
+.ring{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);pointer-events:none}
+.ring circle{fill:none;stroke-width:8;stroke-linecap:round}
+.inp{width:100%;background:#1e293b;border:1px solid #334155;border-radius:.5rem;padding:.6rem;color:#fff}
+.ov{position:fixed;inset:0;background:#020617;z-index:50;display:none;flex-direction:column}
+.ov.on{display:flex}
+.md{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:100;display:none;align-items:center;justify-content:center;padding:1rem}
+.md.on{display:flex}
+</style></head>
+<body class="min-h-screen">
+<div id="loader" class="fixed inset-0 bg-slate-950 z-[200] flex flex-col items-center justify-center">
+ <div class="text-5xl mb-3 animate-pulse">🧠</div><div class="text-xl font-bold">Loading AI & Cloud Sync...</div>
+ <div id="loaderTxt" class="text-xs text-slate-400 mt-2 px-4 text-center">Please wait</div></div>
+
+<!-- KIOSK -->
+<div class="h-screen flex flex-col items-center justify-center relative overflow-hidden">
+ <div class="absolute top-3 right-3 flex gap-2 z-10">
+  <button onclick="askPin('rec')" class="bg-indigo-600 px-4 py-2 rounded-full text-sm font-semibold">➕ Operator</button>
+  <button onclick="askPin('admin')" class="bg-slate-700 px-4 py-2 rounded-full text-sm font-semibold">🔒 Admin</button></div>
+ <h1 class="text-2xl font-black mb-1 text-center px-2">🏫 Delhi School of Brilliants</h1>
+ <p class="text-slate-400 text-xs mb-3">Face Attendance Kiosk v8</p>
+ <div class="relative mb-3"><video id="kv" class="vc" autoplay muted playsinline></video>
+  <svg class="ring" viewBox="0 0 260 260"><circle cx="130" cy="130" r="122" stroke="rgba(255,255,255,.1)"/><circle id="kr" cx="130" cy="130" r="122" stroke="#10b981" stroke-dasharray="767" stroke-dashoffset="767" style="transition:stroke-dashoffset .2s"/></svg></div>
+ <div id="kname" class="mb-3 px-6 py-3 rounded-xl bg-slate-900 border border-slate-700 text-sm font-bold text-slate-300 min-w-[280px] text-center">Position face in camera...</div>
+ <div class="gp rounded-2xl p-4 text-center min-w-[300px]">
+  <div id="clock" class="text-4xl font-black font-mono">00:00:00</div>
+  <div id="cdate" class="text-slate-400 text-xs uppercase mb-3"></div>
+  <button onclick="manualPunch()" class="w-full bg-blue-600 hover:bg-blue-500 py-3 rounded-xl font-black mb-2">👆 PUNCH ATTENDANCE NOW</button>
+  <button id="autoBtn" onclick="toggleAuto()" class="w-full bg-slate-800 border border-slate-700 py-2 rounded-xl text-xs font-bold text-emerald-400">Face AI Auto: ACTIVE</button></div>
+</div>
+
+<!-- ADMIN -->
+<div id="admin" class="ov">
+ <div class="bg-slate-900 border-b border-slate-800 p-3 flex flex-wrap gap-2 justify-between items-center">
+  <h2 class="text-xl font-black">🛡️ Admin Console</h2>
+  <div class="flex flex-wrap gap-2">
+   <button onclick="tab('today')" id="tb-today" class="tbn px-3 py-2 rounded-lg text-sm font-bold">Today</button>
+   <button onclick="tab('pay')" id="tb-pay" class="tbn px-3 py-2 rounded-lg text-sm font-bold">Payroll</button>
+   <button onclick="tab('staff')" id="tb-staff" class="tbn px-3 py-2 rounded-lg text-sm font-bold">Staff</button>
+   <button onclick="tab('cal')" id="tb-cal" class="tbn px-3 py-2 rounded-lg text-sm font-bold">📅 Calendar</button>
+   <button onclick="tab('set')" id="tb-set" class="tbn px-3 py-2 rounded-lg text-sm font-bold">⚙️ Settings</button>
+   <button onclick="$('admin').classList.remove('on')" class="px-3 py-2 rounded-lg bg-red-600/30 text-red-400 font-bold">✕</button></div></div>
+ <div class="flex-1 overflow-y-auto p-4 pb-24">
+  <div id="t-today" class="tc">
+   <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 text-center">
+    <div class="gp p-3 rounded-xl"><div id="sT" class="text-3xl font-black text-blue-400">0</div><div class="text-xs text-slate-400">Total</div></div>
+    <div class="gp p-3 rounded-xl"><div id="sP" class="text-3xl font-black text-emerald-400">0</div><div class="text-xs text-slate-400">Present</div></div>
+    <div class="gp p-3 rounded-xl"><div id="sA" class="text-3xl font-black text-red-400">0</div><div class="text-xs text-slate-400">Absent / Not in</div></div>
+    <div class="gp p-3 rounded-xl"><div id="sL" class="text-3xl font-black text-yellow-400">0</div><div class="text-xs text-slate-400">Late / Half</div></div></div>
+   <button onclick="sendWA()" class="bg-green-600 px-5 py-2.5 rounded-xl font-bold mb-4">WhatsApp Report</button>
+   <div id="holNote" class="text-amber-400 text-sm mb-2"></div>
+   <div class="gp rounded-xl overflow-x-auto"><table class="w-full text-left text-sm"><thead class="bg-slate-800/60 text-xs uppercase"><tr><th class="p-3">Staff</th><th class="p-3">IN / OUT</th><th class="p-3">Status (tap to correct)</th></tr></thead><tbody id="todayTb" class="divide-y divide-slate-800"></tbody></table></div></div>
+  <div id="t-pay" class="tc hidden">
+   <div class="gp p-4 rounded-xl mb-4 flex flex-wrap gap-3 items-center justify-between">
+    <div><div class="font-bold">Monthly Payroll</div><div class="text-xs text-slate-400">Sundays & holidays excluded. No record on a working day = Absent.</div></div>
+    <div class="flex gap-2 items-center"><input type="month" id="payMonth" class="inp" onchange="loadPay()">
+     <button onclick="dlCSV()" class="bg-emerald-600 px-4 py-2 rounded-lg font-bold">CSV</button>
+     <button onclick="dlPDF()" class="bg-red-600 px-4 py-2 rounded-lg font-bold">PDF</button></div></div>
+   <div class="gp rounded-xl overflow-x-auto"><table class="w-full text-left text-sm"><thead class="bg-slate-800/60 text-xs uppercase"><tr><th class="p-3">Staff</th><th class="p-3">Base</th><th class="p-3">Abs / HD / Late</th><th class="p-3">Ded. days</th><th class="p-3">Net</th></tr></thead><tbody id="payTb" class="divide-y divide-slate-800"></tbody></table></div></div>
+  <div id="t-staff" class="tc hidden">
+   <input id="q" class="inp mb-4" placeholder="Search by ID or name..." oninput="renderStaff()">
+   <div id="staffList" class="grid md:grid-cols-2 gap-3"></div></div>
+  <div id="t-cal" class="tc hidden"><div class="gp p-4 rounded-xl max-w-2xl mx-auto">
+   <div class="flex justify-between items-center mb-3"><button onclick="calMove(-1)" class="bg-slate-800 px-3 py-1.5 rounded-lg">‹</button><b id="calTitle"></b><button onclick="calMove(1)" class="bg-slate-800 px-3 py-1.5 rounded-lg">›</button></div>
+   <div class="grid grid-cols-7 gap-1 text-center text-xs text-slate-400 mb-1"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div>
+   <div id="calGrid" class="grid grid-cols-7 gap-1 text-sm"></div></div></div>
+  <div id="t-set" class="tc hidden"><div class="gp p-5 rounded-xl max-w-lg mx-auto space-y-3">
+   <div><label class="text-xs text-slate-400">Admin WhatsApp numbers (comma separated, with country code)</label><input id="sPh" class="inp"></div>
+   <div><label class="text-xs text-slate-400">X Lates = 1 half-day deduction</label><input id="sLR" type="number" min="1" class="inp"></div>
+   <div><label class="text-xs text-slate-400">Salary divisor (days per month)</label><input id="sDv" type="number" min="1" class="inp"></div>
+   <div><label class="text-xs text-slate-400">IN→OUT cooldown (minutes)</label><input id="sCd" type="number" min="0" class="inp"></div>
+   <div><label class="text-xs text-slate-400">Admin PIN (6 digits)</label><input id="sAp" type="password" class="inp"></div>
+   <div><label class="text-xs text-slate-400">Operator PIN (4 digits)</label><input id="sRp" type="password" class="inp"></div>
+   <div class="flex gap-2"><button onclick="backup()" class="flex-1 bg-slate-800 border border-emerald-500/40 text-emerald-400 py-2 rounded-lg font-bold text-sm">⬇ Backup</button>
+    <label class="flex-1 bg-slate-800 border border-indigo-500/40 text-indigo-400 py-2 rounded-lg font-bold text-sm text-center cursor-pointer">⬆ Restore<input type="file" accept=".json" class="hidden" onchange="restore(event)"></label></div>
+   <button onclick="saveSet()" class="w-full bg-blue-600 py-3 rounded-xl font-bold">Save Settings</button></div></div>
+ </div></div>
+
+<!-- OPERATOR -->
+<div id="rec" class="ov">
+ <div class="bg-slate-900 border-b border-slate-800 p-3 flex justify-between items-center"><h2 class="font-black">➕ Staff Registration</h2><button onclick="closeRec()" class="px-3 py-1 bg-slate-800 rounded-lg">✕</button></div>
+ <div class="flex-1 overflow-y-auto p-4 flex justify-center"><div class="gp p-5 rounded-2xl w-full max-w-md h-fit space-y-3">
+  <input id="rName" class="inp" placeholder="Full name">
+  <input id="rRole" class="inp" placeholder="Role / Designation">
+  <div class="text-center">
+   <div class="relative w-44 h-44 mx-auto rounded-full overflow-hidden border-4 border-indigo-500 mb-2 bg-slate-950">
+    <video id="rv" class="w-full h-full object-cover" style="transform:scaleX(-1)" autoplay muted playsinline></video>
+    <img id="rimg" class="absolute inset-0 w-full h-full object-cover hidden"></div>
+   <div class="h-2 bg-slate-800 rounded mb-2"><div id="rbar" class="h-2 bg-indigo-500 rounded" style="width:0"></div></div>
+   <div id="rmsg" class="text-xs text-slate-400 mb-2">Look at camera, move head slightly during scan</div>
+   <button id="rScanBtn" onclick="deepScan()" class="w-full bg-indigo-600 py-2 rounded-lg font-bold">Start 10s Scan</button>
+   <button id="rSaveBtn" onclick="saveNewStaff()" class="w-full bg-emerald-600 py-3 rounded-lg font-bold mt-2 hidden">Save & Register</button></div></div></div></div>
+
+<!-- MODALS -->
+<div id="pinM" class="md"><div class="bg-slate-900 border border-slate-700 rounded-2xl p-5 w-full max-w-xs text-center">
+ <h3 class="font-bold mb-3">Enter PIN</h3><input id="pinI" type="password" inputmode="numeric" class="inp text-center text-2xl tracking-widest mb-3" onkeydown="if(event.key==='Enter')checkPin()">
+ <div class="flex gap-2"><button onclick="$('pinM').classList.remove('on')" class="flex-1 bg-slate-700 py-2 rounded-xl">Cancel</button><button onclick="checkPin()" class="flex-1 bg-blue-600 py-2 rounded-xl">Verify</button></div></div></div>
+<div id="holM" class="md"><div class="bg-slate-900 border border-slate-700 rounded-2xl p-5 w-full max-w-xs text-center">
+ <h3 class="font-bold">Set Holiday</h3><p id="holD" class="text-xs text-slate-400 mb-3 font-mono"></p>
+ <input id="holR" class="inp mb-3" placeholder="Festival name (e.g. Diwali)">
+ <div class="flex gap-2"><button onclick="$('holM').classList.remove('on')" class="flex-1 bg-slate-700 py-2 rounded-xl">Cancel</button><button onclick="saveHol()" class="flex-1 bg-amber-600 py-2 rounded-xl font-bold">Save</button></div>
+ <button id="holX" onclick="delHol()" class="w-full mt-2 bg-red-600/20 text-red-400 py-2 rounded-xl text-xs font-bold hidden">Remove Holiday</button></div></div>
+<div id="toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-600 px-5 py-3 rounded-full z-[300] font-bold text-sm opacity-0 transition-opacity pointer-events-none"></div>
+
+<script type="module">
+let initializeApp,getFirestore,doc,setDoc,getDoc,onSnapshot;
+try{({initializeApp}=await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"));
+ ({getFirestore,doc,setDoc,getDoc,onSnapshot}=await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"))}catch(e){console.warn('Firebase unavailable - local mode',e)}
+const $=i=>document.getElementById(i); window.$=$;
+const cfg={apiKey:"AIzaSyCfxMEK4HOe6aTX2aTmsjv1fyAYBQuqx_xY",authDomain:"dsb-ap.firebaseapp.com",projectId:"dsb-ap",storageBucket:"dsb-ap.firebasestorage.app",messagingSenderId:"662248320552",appId:"1:662248320552:web:132db92cdeecdaeeec0f1d"};
+const pad=n=>String(n).padStart(2,'0');
+const ld=(d=new Date())=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const hm=(d=new Date())=>`${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const toH=t=>{const[a,b]=t.split(':').map(Number);return a+b/60};
+const DEF={staff:[],holidays:{},ts:0,settings:{cooldown:30,adminPin:'123456',recPin:'4321',lateRule:4,phones:'919876543210',divisor:30}};
+let S=JSON.parse(localStorage.getItem('dsb2_s')||'null')||JSON.parse(JSON.stringify(DEF));
+let A=JSON.parse(localStorage.getItem('dsb2_a')||'{}');
+if(!S.staff.length&&localStorage.getItem('dsb_staff')){try{ // migrate from old version
+ S.staff=JSON.parse(localStorage.getItem('dsb_staff')).filter(s=>s.faceDescriptor&&s.faceDescriptor.length).map(s=>({...s,faceDescriptors:[s.faceDescriptor]}));
+ const o=JSON.parse(localStorage.getItem('dsb_set')||'{}');Object.assign(S.settings,{cooldown:o.cooldownMinutes||30,adminPin:o.adminPin||'123456',recPin:o.receptionistPin||'4321',lateRule:o.latePenaltyCount||4,phones:o.adminPhones||S.settings.phones});
+ S.holidays=JSON.parse(localStorage.getItem('dsb_hol')||'{}');}catch(e){}}
+const saveLocal=()=>{try{localStorage.setItem('dsb2_s',JSON.stringify(S));localStorage.setItem('dsb2_a',JSON.stringify(A))}catch(e){toast('Storage full!','e')}};
+function toast(m,t){const e=$('toast');e.textContent=(t==='e'?'❌ ':t==='s'?'✅ ':'')+m;e.style.opacity=1;clearTimeout(e._t);e._t=setTimeout(()=>e.style.opacity=0,3000)}
+function speak(t){try{speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(t))}catch(e){}}
+addEventListener('pointerdown',()=>{try{speechSynthesis.speak(new SpeechSynthesisUtterance(''))}catch(e){}},{once:true});
+
+/* ---------- Cloud ---------- */
+let db=null,coreRef=null;const ym0=ld().slice(0,7);
+const attRef=ym=>doc(db,'dsb_att',ym);
+function saveCore(){S.ts=Date.now();saveLocal();if(db)setDoc(coreRef,JSON.parse(JSON.stringify(S))).catch(e=>console.error(e))}
+function saveAtt(date,id){saveLocal();if(db)setDoc(attRef(date.slice(0,7)),JSON.parse(JSON.stringify({[date]:{[id]:A[date][id]}})),{merge:true}).catch(e=>console.error(e))}
+function mergeAtt(d){for(const dt in d){if(!/^\d{4}-\d\d-\d\d$/.test(dt))continue;A[dt]=Object.assign(A[dt]||{},d[dt])}saveLocal()}
+async function fetchMonth(ym){if(!db)return;try{const s=await getDoc(attRef(ym));if(s.exists())mergeAtt(s.data())}catch(e){}}
+try{const app=initializeApp(cfg);db=getFirestore(app);coreRef=doc(db,'dsb_data','core');
+ onSnapshot(coreRef,s=>{if(s.exists()){const d=s.data();if((d.ts||0)>S.ts){S={...DEF,...d,settings:{...DEF.settings,...d.settings}};saveLocal();buildMatcher();refreshAdmin()}}else if(S.staff.length)saveCore()},e=>console.error(e));
+ onSnapshot(attRef(ym0),s=>{if(s.exists()){mergeAtt(s.data());refreshAdmin()}},e=>console.error(e));
+}catch(e){console.error('Firebase off, local mode',e)}
+
+/* ---------- Face AI ---------- */
+let ready=false,matcher=null;const THRESH=0.40,MARGIN=0.07;
+const dist=(a,b)=>{let s=0;for(let i=0;i<a.length;i++){const d=a[i]-b[i];s+=d*d}return Math.sqrt(s)};
+function buildMatcher(){const l=S.staff.filter(s=>(s.faceDescriptors||[]).length).map(s=>({id:s.id,ds:s.faceDescriptors}));matcher=l.length?l:null}
+function best(d,list){const r=list.map(p=>({id:p.id,d:Math.min(...p.ds.map(x=>dist(d,x)))}));return r.sort((a,b)=>a.d-b.d)}
+function identify(d){const r=best(d,matcher);if(!r.length||r[0].d>THRESH)return{label:'unknown'};if(r[1]&&r[1].d-r[0].d<MARGIN)return{label:'unknown'};return{label:r[0].id,distance:r[0].d}}
+async function loadAI(){const t0=Date.now();while(!window.faceapi&&Date.now()-t0<20000)await new Promise(r=>setTimeout(r,200));
+ try{if(!window.faceapi)throw 0;const u='https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/model/';
+  await faceapi.nets.ssdMobilenetv1.loadFromUri(u);await faceapi.nets.faceLandmark68Net.loadFromUri(u);await faceapi.nets.faceRecognitionNet.loadFromUri(u);
+  ready=true;buildMatcher()}catch(e){toast('AI models failed to load. Check internet & reload.','e')}
+ $('loader').style.display='none';loop()}
+async function camera(v){const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:640,height:480}});v.srcObject=s;return s}
+camera($('kv')).catch(()=>toast('Camera access denied (HTTPS required)','e'));
+
+let auto=true,detId=null,streak=0,lastId=null,pauseUntil=0;
+async function loop(){
+ try{if(ready&&matcher&&Date.now()>pauseUntil&&$('kv').readyState>=2){
+  const det=await faceapi.detectSingleFace($('kv'),new faceapi.SsdMobilenetv1Options({minConfidence:.6})).withFaceLandmarks().withFaceDescriptor();
+  const nm=$('kname'),rg=$('kr');
+  if(det){const m=det.detection.box.width<110?{label:'unknown'}:identify(det.descriptor);
+   if(m.label!=='unknown'){detId=m.label;const s=S.staff.find(x=>x.id===detId);
+    nm.textContent=s?`Verified: ${s.name} (${s.id})`:detId;nm.className=nm.className.replace(/text-\S+/g,'')+' text-emerald-400';
+    if(auto){streak=lastId===detId?streak+1:1;lastId=detId;rg.style.strokeDashoffset=767*(1-streak/5);if(streak>=5){punch(detId);streak=0;rg.style.strokeDashoffset=767}}
+    else rg.style.strokeDashoffset=0;
+   }else{detId=null;streak=0;lastId=null;nm.textContent='Unknown face - stand closer';nm.className=nm.className.replace(/text-\S+/g,'')+' text-red-400';rg.style.strokeDashoffset=767}
+  }else{detId=null;streak=0;lastId=null;nm.textContent='Position face in camera...';nm.className=nm.className.replace(/text-\S+/g,'')+' text-slate-300';rg.style.strokeDashoffset=767}
+ }}catch(e){}
+ setTimeout(loop,250)}
+window.toggleAuto=()=>{auto=!auto;const b=$('autoBtn');b.textContent=auto?'Face AI Auto: ACTIVE':'Face AI Auto: OFF (manual)';b.className=b.className.replace(/text-(emerald|red)-400/,auto?'text-emerald-400':'text-red-400');streak=0;$('kr').style.strokeDashoffset=767}
+window.manualPunch=()=>{if(!ready)return toast('AI still loading','e');if(!S.staff.some(s=>(s.faceDescriptors||[]).length))return toast('No staff with face data. Register staff first.','e');detId?punch(detId):toast('No recognised face in camera','e')};
+
+/* ---------- Punch ---------- */
+const isOff=ds=>new Date(ds+'T00:00:00').getDay()===0||!!S.holidays[ds];
+function punch(id){
+ const s=S.staff.find(x=>x.id===id);if(!s)return;
+ const now=new Date(),ds=ld(now),t=hm(now),ph=toH(t);pauseUntil=Date.now()+5000;
+ if(isOff(ds)){speak('Today is a holiday');return toast('Today is a holiday / Sunday','e')}
+ A[ds]=A[ds]||{};const r=A[ds][id]||{inTime:null,outTime:null,status:'Absent'};
+ const start=toH(s.customInTime||'07:30'),grace=(s.grace??30)/60;
+ if(!r.inTime){r.inTime=t;r.status=ph>start+grace?'Late':'Present';speak(`Welcome ${s.name}. Attendance recorded.`);toast(`${s.name} IN at ${t}`,'s')}
+ else{const mins=(now-new Date(`${ds}T${r.inTime}:00`))/60000;
+  if(mins<S.settings.cooldown){speak('Cooldown active');return toast(`${s.name}: wait ${Math.ceil(S.settings.cooldown-mins)} more min to punch OUT`,'e')}
+  const w=ph-toH(r.inTime);r.outTime=t;
+  r.status=w<3?'Absent':w<6?'Half-Day':(toH(r.inTime)>start+grace?'Late':'Present');
+  speak(`Goodbye ${s.name}. Out punch recorded.`);toast(`${s.name} OUT at ${t} (${r.status})`,'s')}
+ A[ds][id]=r;saveAtt(ds,id);refreshAdmin()}
+
+/* ---------- Clock ---------- */
+setInterval(()=>$('clock').textContent=new Date().toLocaleTimeString('en-IN',{hour12:false}),1000);
+$('cdate').textContent=new Date().toLocaleDateString('en-IN',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+/* ---------- PIN ---------- */
+let pinFor='';
+window.askPin=w=>{pinFor=w;$('pinI').value='';$('pinM').classList.add('on');setTimeout(()=>$('pinI').focus(),50)};
+window.checkPin=()=>{const v=$('pinI').value;
+ if(pinFor==='admin'&&v===S.settings.adminPin){$('pinM').classList.remove('on');$('admin').classList.add('on');loadSet();tab('today')}
+ else if(pinFor==='rec'&&v===S.settings.recPin){$('pinM').classList.remove('on');openRec()}
+ else{toast('Invalid PIN','e');speak('Invalid PIN')}};
+
+/* ---------- Admin ---------- */
+let cur='today';
+window.tab=t=>{cur=t;document.querySelectorAll('.tc').forEach(e=>e.classList.add('hidden'));$('t-'+t).classList.remove('hidden');
+ document.querySelectorAll('.tbn').forEach(b=>b.className='tbn px-3 py-2 rounded-lg text-sm font-bold bg-slate-800 text-slate-300');
+ $('tb-'+t).className='tbn px-3 py-2 rounded-lg text-sm font-bold bg-blue-600 text-white';
+ if(t==='pay'&&!$('payMonth').value)$('payMonth').value=ld().slice(0,7);refreshAdmin()};
+function refreshAdmin(){if(!$('admin').classList.contains('on'))return;
+ ({today:renderToday,pay:loadPay,staff:renderStaff,cal:renderCal,set:()=>{}})[cur]()}
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function renderToday(){const ds=ld(),rs=A[ds]||{};let p=0,a=0,l=0,h='';
+ $('holNote').textContent=isOff(ds)?'🎉 Today is '+(S.holidays[ds]||'Sunday')+' (holiday)':'';
+ S.staff.forEach(s=>{const r=rs[s.id];const st=r?r.status:'-';
+  if(st==='Present')p++;else if(st==='Late'||st==='Half-Day')l++;else a++;
+  h+=`<tr><td class="p-3"><b>${esc(s.name)}</b><div class="text-xs text-slate-400">${esc(s.id)} · ${esc(s.role)}</div></td><td class="p-3">${r?.inTime||'--'} / ${r?.outTime||'--'}</td><td class="p-3"><select class="bg-slate-800 border border-slate-700 rounded p-1" onchange="setStatus('${s.id}',this.value)">${['-','Present','Late','Half-Day','Absent'].map(o=>`<option ${o===st?'selected':''}>${o}</option>`).join('')}</select></td></tr>`});
+ $('sT').textContent=S.staff.length;$('sP').textContent=p;$('sA').textContent=a;$('sL').textContent=l;
+ $('todayTb').innerHTML=h||'<tr><td class="p-4 text-slate-500" colspan="3">No staff yet. Use Operator → register staff.</td></tr>'}
+window.setStatus=(id,v)=>{if(v==='-')return;const ds=ld();A[ds]=A[ds]||{};const r=A[ds][id]||{inTime:null,outTime:null};r.status=v;r.manual=true;A[ds][id]=r;saveAtt(ds,id);toast('Status updated','s');renderToday()};
+
+/* ---------- Payroll ---------- */
+function calc(s,ym){const[y,m]=ym.split('-').map(Number),dim=new Date(y,m,0).getDate(),today=ld();let ab=0,hd=0,lt=0,wd=0;
+ for(let d=1;d<=dim;d++){const ds=`${ym}-${pad(d)}`;if(ds>today)break;if(s.joined&&ds<s.joined)continue;if(isOff(ds))continue;wd++;
+  const r=A[ds]?.[s.id];if(!r){if(ds<today)ab++;continue}
+  if(r.status==='Absent')ab++;else if(r.status==='Half-Day')hd++;else if(r.status==='Late')lt++}
+ const lr=Math.max(1,S.settings.lateRule||4),ded=ab+hd*.5+Math.floor(lt/lr)*.5,base=s.salary||0,div=S.settings.divisor||30;
+ return{ab,hd,lt,ded,wd,base,net:Math.max(0,Math.round(base-ded*base/div))}}
+window.loadPay=async()=>{const ym=$('payMonth').value||ld().slice(0,7);await fetchMonth(ym);
+ $('payTb').innerHTML=S.staff.map(s=>{const c=calc(s,ym);return`<tr><td class="p-3"><b>${esc(s.name)}</b><div class="text-xs text-slate-400">${esc(s.id)}</div></td><td class="p-3">₹${c.base}</td><td class="p-3 text-xs">Abs <b class="text-red-400">${c.ab}</b> · HD <b class="text-yellow-400">${c.hd}</b> · Late <b class="text-blue-400">${c.lt}</b></td><td class="p-3 text-red-400 font-bold">${c.ded}</td><td class="p-3 text-emerald-400 font-black">₹${c.net}</td></tr>`}).join('')||'<tr><td class="p-4 text-slate-500" colspan="5">No staff</td></tr>'};
+window.dlCSV=()=>{const ym=$('payMonth').value;let c='\uFEFFID,Name,Role,Base,Absent,HalfDay,Late,DeductDays,Net\n';
+ S.staff.forEach(s=>{const x=calc(s,ym);c+=`${s.id},"${s.name}","${s.role}",${x.base},${x.ab},${x.hd},${x.lt},${x.ded},${x.net}\n`});
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{type:'text/csv'}));a.download=`DSB_Payroll_${ym}.csv`;a.click();toast('CSV downloaded','s')};
+window.dlPDF=()=>{const ym=$('payMonth').value;const d=new window.jspdf.jsPDF();d.text(`Delhi School of Brilliants - Payroll ${ym}`,14,18);
+ d.autoTable({startY:26,head:[['ID','Name','Base','Abs','HD','Late','Ded Days','Net']],body:S.staff.map(s=>{const x=calc(s,ym);return[s.id,s.name,'Rs.'+x.base,x.ab,x.hd,x.lt,x.ded,'Rs.'+x.net]})});
+ d.save(`DSB_Payroll_${ym}.pdf`);toast('PDF downloaded','s')};
+
+/* ---------- Staff ---------- */
+window.renderStaff=()=>{const q=$('q').value.trim().toLowerCase();
+ $('staffList').innerHTML=S.staff.filter(s=>!q||s.id.toLowerCase().includes(q)||s.name.toLowerCase().includes(q)).map(s=>`
+ <div class="gp p-3 rounded-xl flex gap-3"><img src="${s.photo||''}" class="w-14 h-14 rounded-full object-cover bg-slate-800 shrink-0">
+ <div class="flex-1 min-w-0"><div class="font-bold truncate">${esc(s.name)} <span class="text-xs text-slate-400">${esc(s.id)}</span></div>
+ <div class="grid grid-cols-2 gap-2 my-2 text-xs">
+  <label>Salary ₹<input id="sal_${s.id}" type="number" value="${s.salary||0}" class="inp !p-1"></label>
+  <label>Grace (min)<input id="gr_${s.id}" type="number" value="${s.grace??30}" class="inp !p-1"></label>
+  <label>Shift start<input id="ci_${s.id}" type="time" value="${s.customInTime||'07:30'}" class="inp !p-1"></label>
+  <label>Role<input id="ro_${s.id}" value="${esc(s.role)}" class="inp !p-1"></label></div>
+ <div class="flex gap-2"><button onclick="saveStaff('${s.id}')" class="flex-1 bg-emerald-600 py-1.5 rounded font-bold text-sm">Save</button><button onclick="delStaff('${s.id}')" class="bg-red-600/30 text-red-400 px-3 rounded">🗑</button></div></div></div>`).join('')||'<p class="text-slate-500">No staff found.</p>'};
+window.saveStaff=id=>{const s=S.staff.find(x=>x.id===id);if(!s)return;
+ s.salary=parseFloat($('sal_'+id).value)||0;s.grace=parseInt($('gr_'+id).value);if(isNaN(s.grace))s.grace=30;s.customInTime=$('ci_'+id).value||'07:30';s.role=$('ro_'+id).value;saveCore();toast('Saved','s')};
+window.delStaff=id=>{const s=S.staff.find(x=>x.id===id);if(!s||!confirm(`Delete ${s.name}? Attendance history stays but the staff is removed.`))return;
+ S.staff=S.staff.filter(x=>x.id!==id);saveCore();buildMatcher();renderStaff();toast('Deleted')};
+
+/* ---------- Calendar ---------- */
+let cd=new Date(),holDate=null;
+window.calMove=d=>{cd=new Date(cd.getFullYear(),cd.getMonth()+d,1);renderCal()};
+function renderCal(){const y=cd.getFullYear(),m=cd.getMonth();$('calTitle').textContent=cd.toLocaleString('en',{month:'long'})+' '+y;
+ let h='<div></div>'.repeat(new Date(y,m,1).getDay());
+ for(let d=1,n=new Date(y,m+1,0).getDate();d<=n;d++){const ds=`${y}-${pad(m+1)}-${pad(d)}`,sun=new Date(y,m,d).getDay()===0,hn=S.holidays[ds];
+  const c=sun?'bg-red-950/50 border-red-800 text-red-300':hn?'bg-amber-950/50 border-amber-700 text-amber-200':'bg-slate-900 border-slate-800';
+  h+=`<div onclick="openHol('${ds}')" class="border ${c} rounded-lg p-1.5 text-center cursor-pointer min-h-[52px]"><b>${d}</b>${sun?'<div class="text-[9px]">Sun</div>':hn?`<div class="text-[9px] truncate">${esc(hn)}</div>`:''}</div>`}
+ $('calGrid').innerHTML=h}
+window.openHol=ds=>{if(new Date(ds+'T00:00:00').getDay()===0)return toast('Sunday is always a holiday');holDate=ds;$('holD').textContent=ds;$('holR').value=S.holidays[ds]||'';$('holX').classList.toggle('hidden',!S.holidays[ds]);$('holM').classList.add('on')};
+window.saveHol=()=>{S.holidays[holDate]=$('holR').value.trim()||'School Holiday';saveCore();$('holM').classList.remove('on');renderCal();toast('Holiday saved','s')};
+window.delHol=()=>{delete S.holidays[holDate];saveCore();$('holM').classList.remove('on');renderCal();toast('Holiday removed')};
+
+/* ---------- Settings ---------- */
+function loadSet(){const s=S.settings;$('sPh').value=s.phones;$('sLR').value=s.lateRule;$('sDv').value=s.divisor;$('sCd').value=s.cooldown;$('sAp').value=s.adminPin;$('sRp').value=s.recPin}
+window.saveSet=()=>{const ap=$('sAp').value,rp=$('sRp').value;
+ if(!/^\d{6}$/.test(ap))return toast('Admin PIN must be 6 digits','e');if(!/^\d{4}$/.test(rp))return toast('Operator PIN must be 4 digits','e');
+ Object.assign(S.settings,{phones:$('sPh').value.trim()||'919876543210',lateRule:parseInt($('sLR').value)||4,divisor:parseInt($('sDv').value)||30,cooldown:Math.max(0,parseInt($('sCd').value)||0),adminPin:ap,recPin:rp});
+ saveCore();toast('Settings saved','s')};
+window.backup=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({S,A,at:new Date().toISOString()})],{type:'application/json'}));a.download=`DSB_Backup_${ld()}.json`;a.click()};
+window.restore=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);
+ if(d.S){S={...DEF,...d.S,settings:{...DEF.settings,...d.S.settings}}}else if(d.staffList){S.staff=d.staffList;S.holidays=d.schoolHolidays||{}}
+ A=d.A||d.attendanceRecords||A;saveCore();
+ if(db)for(const dt in A)for(const id in A[dt])saveAtt(dt,id);
+ toast('Restored','s');setTimeout(()=>location.reload(),1200)}catch(x){toast('Invalid backup file','e')}};r.readAsText(f)};
+window.sendWA=()=>{const ds=ld(),rs=A[ds]||{};let p=0,a=0,l=0,t=`🏫 *DSB ATTENDANCE* - ${ds}\n\n`;
+ S.staff.forEach(s=>{const r=rs[s.id];const st=r?r.status:'Absent';if(st==='Present')p++;else if(st==='Late'||st==='Half-Day')l++;else a++;t+=`• ${s.name} (${s.id}): ${st} (IN ${r?.inTime||'--'} | OUT ${r?.outTime||'--'})\n`});
+ t+=`\n✅ Present: ${p}\n⚠️ Late/HD: ${l}\n❌ Absent: ${a}`;
+ const ph=(S.settings.phones||'').split(',')[0].trim().replace(/\D/g,'');
+ window.open(`https://api.whatsapp.com/send?phone=${ph}&text=${encodeURIComponent(t)}`,'_blank')};
+
+/* ---------- Registration ---------- */
+let rStream=null,samples=[],photo=null;
+async function openRec(){$('rec').classList.add('on');$('rSaveBtn').classList.add('hidden');$('rScanBtn').classList.remove('hidden');$('rScanBtn').disabled=false;$('rimg').classList.add('hidden');$('rbar').style.width=0;samples=[];photo=null;
+ $('rName').value='';$('rRole').value='';try{rStream=await camera($('rv'))}catch(e){toast('Camera denied','e')}}
+window.closeRec=()=>{$('rec').classList.remove('on');rStream&&rStream.getTracks().forEach(t=>t.stop())};
+window.deepScan=async()=>{if(!ready)return toast('AI still loading','e');const b=$('rScanBtn');b.disabled=true;samples=[];photo=null;const v=$('rv');$('rmsg').textContent='Scanning... move head slightly';
+ for(let i=1;i<=10;i++){
+  try{const d=await faceapi.detectSingleFace(v,new faceapi.SsdMobilenetv1Options({minConfidence:.7})).withFaceLandmarks().withFaceDescriptor();
+   if(d){samples.push(Array.from(d.descriptor));if(!photo){const c=document.createElement('canvas');c.width=c.height=120;const vw=v.videoWidth,vh=v.videoHeight,sz=Math.min(vw,vh);c.getContext('2d').drawImage(v,(vw-sz)/2,(vh-sz)/2,sz,sz,0,0,120,120);photo=c.toDataURL('image/jpeg',.6)}}}catch(e){}
+  $('rbar').style.width=i*10+'%';await new Promise(r=>setTimeout(r,800))}
+ if(samples.length){const mean=samples[0].map((_,i)=>samples.reduce((a,s)=>a+s[i],0)/samples.length);samples=samples.filter(s=>dist(s,mean)<0.5)}
+ if(samples.length<3){$('rmsg').textContent='Face not clear. Improve light, look at camera, retry.';b.disabled=false;return toast('Scan failed - only '+samples.length+' good frames','e')}
+ samples=samples.filter((_,i)=>i%Math.ceil(samples.length/6)===0).slice(0,6);
+ $('rimg').src=photo;$('rimg').classList.remove('hidden');b.classList.add('hidden');$('rSaveBtn').classList.remove('hidden');$('rmsg').textContent=`Scan OK (${samples.length} samples)`;speak('Biometric scan completed');toast('Scan complete','s')};
+window.saveNewStaff=()=>{const n=$('rName').value.trim(),r=$('rRole').value.trim();if(!n||!r)return toast('Enter name and role','e');if(!samples.length)return toast('Scan first','e');
+ if(matcher)for(const sm of samples){const r=best(sm,matcher)[0];if(r&&r.d<0.5){const o=S.staff.find(x=>x.id===r.id);return toast(`Face already registered as ${o?o.name:r.id}. Delete that entry first if re-registering.`,'e')}}
+ const nums=S.staff.map(s=>parseInt(s.id.split('-')[1])||100);const id='TCH-'+(Math.max(100,...nums)+1);
+ S.staff.push({id,name:n,role:r,salary:25000,grace:30,customInTime:'07:30',joined:ld(),photo,faceDescriptors:samples});
+ saveCore();buildMatcher();speak(`${n} registered`);toast('Staff registered','s');closeRec();refreshAdmin()};
+
+loadAI();
+</script></body></html>

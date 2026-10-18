@@ -4,6 +4,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.min.js"></script>
 <style>
 body{font-family:system-ui,sans-serif;background:#020617;color:#f1f5f9}
@@ -62,23 +63,27 @@ body{font-family:system-ui,sans-serif;background:#020617;color:#f1f5f9}
    <div class="gp rounded-xl overflow-x-auto"><table class="w-full text-left text-sm"><thead class="bg-slate-800/60 text-xs uppercase"><tr><th class="p-3">Staff</th><th class="p-3">IN / OUT</th><th class="p-3">Status (tap to correct)</th></tr></thead><tbody id="todayTb" class="divide-y divide-slate-800"></tbody></table></div></div>
   <div id="t-pay" class="tc hidden">
    <div class="gp p-4 rounded-xl mb-4 flex flex-wrap gap-3 items-center justify-between">
-    <div><div class="font-bold">Monthly Payroll</div><div class="text-xs text-slate-400">Sundays & holidays excluded. No record on a working day = Absent.</div></div>
+    <div><div class="font-bold">Monthly Payroll</div><div class="text-xs text-slate-400">Sundays/holidays paid. Grace till 8:00. 3 lates = ½ day. Reports list every date.</div></div>
     <div class="flex gap-2 items-center"><input type="month" id="payMonth" class="inp" onchange="loadPay()">
-     <button onclick="dlCSV()" class="bg-emerald-600 px-4 py-2 rounded-lg font-bold">CSV</button>
+     <button onclick="dlXLSX()" class="bg-emerald-600 px-4 py-2 rounded-lg font-bold">Excel</button>
      <button onclick="dlPDF()" class="bg-red-600 px-4 py-2 rounded-lg font-bold">PDF</button></div></div>
    <div class="gp rounded-xl overflow-x-auto"><table class="w-full text-left text-sm"><thead class="bg-slate-800/60 text-xs uppercase"><tr><th class="p-3">Staff</th><th class="p-3">Base</th><th class="p-3">Abs / HD / Late</th><th class="p-3">Ded. days</th><th class="p-3">Net</th></tr></thead><tbody id="payTb" class="divide-y divide-slate-800"></tbody></table></div></div>
   <div id="t-staff" class="tc hidden">
-   <input id="q" class="inp mb-4" placeholder="Search by ID or name..." oninput="renderStaff()">
+   <div class="flex gap-2 mb-4"><input id="q" class="inp" placeholder="Search by ID or name..." oninput="renderStaff()"><select id="qc" class="inp !w-40" onchange="renderStaff()"><option value="">All</option><option value="Teacher">Teacher</option><option value="Driver">Driver</option><option value="Maid">Maid</option><option value="Helper">Helping Staff</option></select></div>
    <div id="staffList" class="grid md:grid-cols-2 gap-3"></div></div>
   <div id="t-cal" class="tc hidden"><div class="gp p-4 rounded-xl max-w-2xl mx-auto">
    <div class="flex justify-between items-center mb-3"><button onclick="calMove(-1)" class="bg-slate-800 px-3 py-1.5 rounded-lg">‹</button><b id="calTitle"></b><button onclick="calMove(1)" class="bg-slate-800 px-3 py-1.5 rounded-lg">›</button></div>
    <div class="grid grid-cols-7 gap-1 text-center text-xs text-slate-400 mb-1"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div>
-   <div id="calGrid" class="grid grid-cols-7 gap-1 text-sm"></div></div></div>
+   <div id="calGrid" class="grid grid-cols-7 gap-1 text-sm"></div>
+   <div id="holList" class="mt-4 text-sm"></div></div></div>
   <div id="t-set" class="tc hidden"><div class="gp p-5 rounded-xl max-w-lg mx-auto space-y-3">
    <div><label class="text-xs text-slate-400">Admin WhatsApp numbers (comma separated, with country code)</label><input id="sPh" class="inp"></div>
    <div><label class="text-xs text-slate-400">X Lates = 1 half-day deduction</label><input id="sLR" type="number" min="1" class="inp"></div>
    <div><label class="text-xs text-slate-400">Salary divisor (days per month)</label><input id="sDv" type="number" min="1" class="inp"></div>
    <div><label class="text-xs text-slate-400">IN→OUT cooldown (minutes)</label><input id="sCd" type="number" min="0" class="inp"></div>
+   <div id="seasonBox" class="space-y-3"></div>
+   <div id="catBox"></div>
+   <div><label class="text-xs text-slate-400">Face match strictness (0.40 strict … 0.55 loose, default 0.50)</label><input id="sTh" type="number" step="0.01" min="0.3" max="0.6" class="inp"></div>
    <div><label class="text-xs text-slate-400">Admin PIN (6 digits)</label><input id="sAp" type="password" class="inp"></div>
    <div><label class="text-xs text-slate-400">Operator PIN (4 digits)</label><input id="sRp" type="password" class="inp"></div>
    <div class="flex gap-2"><button onclick="backup()" class="flex-1 bg-slate-800 border border-emerald-500/40 text-emerald-400 py-2 rounded-lg font-bold text-sm">⬇ Backup</button>
@@ -91,7 +96,8 @@ body{font-family:system-ui,sans-serif;background:#020617;color:#f1f5f9}
  <div class="bg-slate-900 border-b border-slate-800 p-3 flex justify-between items-center"><h2 class="font-black">➕ Staff Registration</h2><button onclick="closeRec()" class="px-3 py-1 bg-slate-800 rounded-lg">✕</button></div>
  <div class="flex-1 overflow-y-auto p-4 flex justify-center"><div class="gp p-5 rounded-2xl w-full max-w-md h-fit space-y-3">
   <input id="rName" class="inp" placeholder="Full name">
-  <input id="rRole" class="inp" placeholder="Role / Designation">
+  <select id="rCat" class="inp"><option value="Teacher">Teacher</option><option value="Driver">Driver</option><option value="Maid">Maid</option><option value="Helper">Helping Staff / Other Helper</option></select>
+  <input id="rRole" class="inp" placeholder="Role (e.g. Maths Teacher, Bus Driver)">
   <div class="text-center">
    <div class="relative w-44 h-44 mx-auto rounded-full overflow-hidden border-4 border-indigo-500 mb-2 bg-slate-950">
     <video id="rv" class="w-full h-full object-cover" style="transform:scaleX(-1)" autoplay muted playsinline></video>
@@ -122,13 +128,18 @@ const pad=n=>String(n).padStart(2,'0');
 const ld=(d=new Date())=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const hm=(d=new Date())=>`${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const toH=t=>{const[a,b]=t.split(':').map(Number);return a+b/60};
-const DEF={staff:[],holidays:{},ts:0,settings:{cooldown:30,adminPin:'123456',recPin:'4321',lateRule:4,phones:'919876543210',divisor:30}};
+const DEF={staff:[],holidays:{},ts:0,settings:{cooldown:30,adminPin:'123456',recPin:'4321',lateRule:3,phones:'919876543210',divisor:30,thresh:0.5}};
 let S=JSON.parse(localStorage.getItem('dsb2_s')||'null')||JSON.parse(JSON.stringify(DEF));
 let A=JSON.parse(localStorage.getItem('dsb2_a')||'{}');
 if(!S.staff.length&&localStorage.getItem('dsb_staff')){try{ // migrate from old version
  S.staff=JSON.parse(localStorage.getItem('dsb_staff')).filter(s=>s.faceDescriptor&&s.faceDescriptor.length).map(s=>({...s,faceDescriptors:[s.faceDescriptor]}));
  const o=JSON.parse(localStorage.getItem('dsb_set')||'{}');Object.assign(S.settings,{cooldown:o.cooldownMinutes||30,adminPin:o.adminPin||'123456',recPin:o.receptionistPin||'4321',lateRule:o.latePenaltyCount||4,phones:o.adminPhones||S.settings.phones});
  S.holidays=JSON.parse(localStorage.getItem('dsb_hol')||'{}');}catch(e){}}
+function fixS(){const t=S.settings;
+ if(!t.seasons)t.seasons={Summer:{start:'07:30',grace:30,close:t.close||'15:00',mid:t.mid||'11:30'},Winter:{start:'08:00',grace:30,close:'15:30',mid:'12:00'}};
+ if(!S.seasonLog||!S.seasonLog.length)S.seasonLog=[{from:'2000-01-01',s:'Summer'}];
+ if(t.rulesV!==3){if(!t.rulesV)t.lateRule=3;t.rulesV=3;S.staff.forEach(s=>{if(s.customInTime==='07:30')s.customInTime='';delete s.grace})}
+ if(!t.cat)t.cat={};S.staff.forEach(s=>{if(!s.cat)s.cat='Teacher'})}fixS();
 const saveLocal=()=>{try{localStorage.setItem('dsb2_s',JSON.stringify(S));localStorage.setItem('dsb2_a',JSON.stringify(A))}catch(e){toast('Storage full!','e')}};
 function toast(m,t){const e=$('toast');e.textContent=(t==='e'?'❌ ':t==='s'?'✅ ':'')+m;e.style.opacity=1;clearTimeout(e._t);e._t=setTimeout(()=>e.style.opacity=0,3000)}
 function speak(t){try{speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(t))}catch(e){}}
@@ -137,21 +148,22 @@ addEventListener('pointerdown',()=>{try{speechSynthesis.speak(new SpeechSynthesi
 /* ---------- Cloud ---------- */
 let db=null,coreRef=null;const ym0=ld().slice(0,7);
 const attRef=ym=>doc(db,'dsb_att',ym);
-function saveCore(){S.ts=Date.now();saveLocal();if(db)setDoc(coreRef,JSON.parse(JSON.stringify(S))).catch(e=>console.error(e))}
+function saveCore(){S.ts=Date.now();saveLocal();if(!db)return;const c=JSON.parse(JSON.stringify(S));c.staff.forEach(s=>s.faceDescriptors=(s.faceDescriptors||[]).map(v=>({v})));
+ setDoc(coreRef,c).catch(e=>{console.error(e);toast('Cloud save failed: '+(e.code||e.message),'e')})}
 function saveAtt(date,id){saveLocal();if(db)setDoc(attRef(date.slice(0,7)),JSON.parse(JSON.stringify({[date]:{[id]:A[date][id]}})),{merge:true}).catch(e=>console.error(e))}
 function mergeAtt(d){for(const dt in d){if(!/^\d{4}-\d\d-\d\d$/.test(dt))continue;A[dt]=Object.assign(A[dt]||{},d[dt])}saveLocal()}
 async function fetchMonth(ym){if(!db)return;try{const s=await getDoc(attRef(ym));if(s.exists())mergeAtt(s.data())}catch(e){}}
 try{const app=initializeApp(cfg);db=getFirestore(app);coreRef=doc(db,'dsb_data','core');
- onSnapshot(coreRef,s=>{if(s.exists()){const d=s.data();if((d.ts||0)>S.ts){S={...DEF,...d,settings:{...DEF.settings,...d.settings}};saveLocal();buildMatcher();refreshAdmin()}}else if(S.staff.length)saveCore()},e=>console.error(e));
+ onSnapshot(coreRef,s=>{if(s.exists()){const d=s.data();if((d.ts||0)>S.ts){S={...DEF,...d,settings:{...DEF.settings,...d.settings}};S.staff.forEach(s=>s.faceDescriptors=(s.faceDescriptors||[]).map(x=>Array.isArray(x)?x:x.v));fixS();saveLocal();buildMatcher();refreshAdmin()}}else if(S.staff.length)saveCore()},e=>console.error(e));
  onSnapshot(attRef(ym0),s=>{if(s.exists()){mergeAtt(s.data());refreshAdmin()}},e=>console.error(e));
 }catch(e){console.error('Firebase off, local mode',e)}
 
 /* ---------- Face AI ---------- */
-let ready=false,matcher=null;const THRESH=0.40,MARGIN=0.07;
+let ready=false,matcher=null;const MARGIN=0.08;
 const dist=(a,b)=>{let s=0;for(let i=0;i<a.length;i++){const d=a[i]-b[i];s+=d*d}return Math.sqrt(s)};
 function buildMatcher(){const l=S.staff.filter(s=>(s.faceDescriptors||[]).length).map(s=>({id:s.id,ds:s.faceDescriptors}));matcher=l.length?l:null}
 function best(d,list){const r=list.map(p=>({id:p.id,d:Math.min(...p.ds.map(x=>dist(d,x)))}));return r.sort((a,b)=>a.d-b.d)}
-function identify(d){const r=best(d,matcher);if(!r.length||r[0].d>THRESH)return{label:'unknown'};if(r[1]&&r[1].d-r[0].d<MARGIN)return{label:'unknown'};return{label:r[0].id,distance:r[0].d}}
+function identify(d){const r=best(d,matcher);if(!r.length||r[0].d>(S.settings.thresh||0.5))return{label:'unknown',d:r[0]?.d};if(r[1]&&r[1].d-r[0].d<MARGIN)return{label:'unknown',d:r[0].d,amb:1};return{label:r[0].id,distance:r[0].d}}
 async function loadAI(){const t0=Date.now();while(!window.faceapi&&Date.now()-t0<20000)await new Promise(r=>setTimeout(r,200));
  try{if(!window.faceapi)throw 0;const u='https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/model/';
   await faceapi.nets.ssdMobilenetv1.loadFromUri(u);await faceapi.nets.faceLandmark68Net.loadFromUri(u);await faceapi.nets.faceRecognitionNet.loadFromUri(u);
@@ -165,12 +177,12 @@ async function loop(){
  try{if(ready&&matcher&&Date.now()>pauseUntil&&$('kv').readyState>=2){
   const det=await faceapi.detectSingleFace($('kv'),new faceapi.SsdMobilenetv1Options({minConfidence:.6})).withFaceLandmarks().withFaceDescriptor();
   const nm=$('kname'),rg=$('kr');
-  if(det){const m=det.detection.box.width<110?{label:'unknown'}:identify(det.descriptor);
+  if(det){const m=det.detection.box.width<70?{label:'unknown'}:identify(det.descriptor);
    if(m.label!=='unknown'){detId=m.label;const s=S.staff.find(x=>x.id===detId);
     nm.textContent=s?`Verified: ${s.name} (${s.id})`:detId;nm.className=nm.className.replace(/text-\S+/g,'')+' text-emerald-400';
     if(auto){streak=lastId===detId?streak+1:1;lastId=detId;rg.style.strokeDashoffset=767*(1-streak/5);if(streak>=5){punch(detId);streak=0;rg.style.strokeDashoffset=767}}
     else rg.style.strokeDashoffset=0;
-   }else{detId=null;streak=0;lastId=null;nm.textContent='Unknown face - stand closer';nm.className=nm.className.replace(/text-\S+/g,'')+' text-red-400';rg.style.strokeDashoffset=767}
+   }else{detId=null;streak=0;lastId=null;nm.textContent=m.amb?`Unclear match (${m.d.toFixed(2)}) - look straight`:`Unknown (closest ${m.d!=null?m.d.toFixed(2):'-'}) - stand closer`;nm.className=nm.className.replace(/text-\S+/g,'')+' text-red-400';rg.style.strokeDashoffset=767}
   }else{detId=null;streak=0;lastId=null;nm.textContent='Position face in camera...';nm.className=nm.className.replace(/text-\S+/g,'')+' text-slate-300';rg.style.strokeDashoffset=767}
  }}catch(e){}
  setTimeout(loop,250)}
@@ -185,11 +197,10 @@ function punch(id){
  if(isOff(ds)){speak('Today is a holiday');return toast('Today is a holiday / Sunday','e')}
  A[ds]=A[ds]||{};const r=A[ds][id]||{inTime:null,outTime:null,status:'Absent'};
  const start=toH(s.customInTime||'07:30'),grace=(s.grace??30)/60;
- if(!r.inTime){r.inTime=t;r.status=ph>start+grace?'Late':'Present';speak(`Welcome ${s.name}. Attendance recorded.`);toast(`${s.name} IN at ${t}`,'s')}
+ if(!r.inTime){r.inTime=t;r.status=classify(s,t,null,ds);speak(`Welcome ${s.name}. Attendance recorded.`);toast(`${s.name} IN at ${t}`,'s')}
  else{const mins=(now-new Date(`${ds}T${r.inTime}:00`))/60000;
   if(mins<S.settings.cooldown){speak('Cooldown active');return toast(`${s.name}: wait ${Math.ceil(S.settings.cooldown-mins)} more min to punch OUT`,'e')}
-  const w=ph-toH(r.inTime);r.outTime=t;
-  r.status=w<3?'Absent':w<6?'Half-Day':(toH(r.inTime)>start+grace?'Late':'Present');
+  r.outTime=t;if(!r.manual)r.status=classify(s,r.inTime,t,ds);
   speak(`Goodbye ${s.name}. Out punch recorded.`);toast(`${s.name} OUT at ${t} (${r.status})`,'s')}
  A[ds][id]=r;saveAtt(ds,id);refreshAdmin()}
 
@@ -215,43 +226,81 @@ function refreshAdmin(){if(!$('admin').classList.contains('on'))return;
  ({today:renderToday,pay:loadPay,staff:renderStaff,cal:renderCal,set:()=>{}})[cur]()}
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function renderToday(){const ds=ld(),rs=A[ds]||{};let p=0,a=0,l=0,h='';
- $('holNote').textContent=isOff(ds)?'🎉 Today is '+(S.holidays[ds]||'Sunday')+' (holiday)':'';
+ {const P=SP(ds);$('holNote').textContent=isOff(ds)?'🎉 Today is '+(S.holidays[ds]||'Sunday')+' (holiday)':`${seasonFor(ds)} timing: start ${P.start}, grace ${P.grace} min, closes ${P.close}`}
  S.staff.forEach(s=>{const r=rs[s.id];const st=r?r.status:'-';
   if(st==='Present')p++;else if(st==='Late'||st==='Half-Day')l++;else a++;
-  h+=`<tr><td class="p-3"><b>${esc(s.name)}</b><div class="text-xs text-slate-400">${esc(s.id)} · ${esc(s.role)}</div></td><td class="p-3">${r?.inTime||'--'} / ${r?.outTime||'--'}</td><td class="p-3"><select class="bg-slate-800 border border-slate-700 rounded p-1" onchange="setStatus('${s.id}',this.value)">${['-','Present','Late','Half-Day','Absent'].map(o=>`<option ${o===st?'selected':''}>${o}</option>`).join('')}</select></td></tr>`});
+  h+=`<tr><td class="p-3"><b>${esc(s.name)}</b><div class="text-xs text-slate-400">${esc(s.id)} · ${catName(s.cat)} · ${esc(s.role)}</div></td><td class="p-3">${r?.inTime||'--'} / ${r?.outTime||'--'}</td><td class="p-3"><select class="bg-slate-800 border border-slate-700 rounded p-1" onchange="setStatus('${s.id}',this.value)">${['-','Present','Late','Half-Day','Absent'].map(o=>`<option ${o===st?'selected':''}>${o}</option>`).join('')}</select></td></tr>`});
  $('sT').textContent=S.staff.length;$('sP').textContent=p;$('sA').textContent=a;$('sL').textContent=l;
  $('todayTb').innerHTML=h||'<tr><td class="p-4 text-slate-500" colspan="3">No staff yet. Use Operator → register staff.</td></tr>'}
 window.setStatus=(id,v)=>{if(v==='-')return;const ds=ld();A[ds]=A[ds]||{};const r=A[ds][id]||{inTime:null,outTime:null};r.status=v;r.manual=true;A[ds][id]=r;saveAtt(ds,id);toast('Status updated','s');renderToday()};
 
 /* ---------- Payroll ---------- */
-function calc(s,ym){const[y,m]=ym.split('-').map(Number),dim=new Date(y,m,0).getDate(),today=ld();let ab=0,hd=0,lt=0,wd=0;
+/* Rules: shift 07:30 + grace 30 min (till 08:00 = on time). School closes 15:00 - time after closing is ignored (no extra pay).
+   IN before 11:30: stays till closing = full day (Late if IN after grace). Leaves between 11:30 and closing = Half-Day. Leaves before 11:30 = Absent.
+   IN at/after 11:30: Half-Day if worked (till closing) >= 3h, else Absent. X Lates = 0.5 day deduction. */
+const CATS={Teacher:['TCH','Teacher'],Driver:['DRV','Driver'],Maid:['MAD','Maid'],Helper:['HLP','Helping Staff']};
+const catName=c=>(CATS[c]||CATS.Teacher)[1];
+const hmf=x=>{let m=Math.round(x*60);return pad(Math.floor(m/60))+':'+pad(m%60)};
+function timing(s,ds){const P=SP(ds),ct=(S.settings.cat||{})[s.cat||'Teacher']||{};
+ const start=toH(s.customInTime||ct.in||P.start),close=toH(s.customOutTime||ct.out||P.close);
+ return{start,close,mid:toH(P.mid)+((start-toH(P.start))+(close-toH(P.close)))/2,gr:(P.grace??30)/60}}
+const seasonFor=ds=>{let c='Summer';for(const e of [...S.seasonLog].sort((a,b)=>a.from<b.from?-1:1))if(e.from<=ds)c=e.s;return c};
+const SP=ds=>S.settings.seasons[seasonFor(ds)];
+function classify(s,inT,outT,ds){const{start,close,mid,gr}=timing(s,ds||ld()),i=toH(inT);
+ if(!outT)return i>=mid?'Half-Day':(i>start+gr?'Late':'Present');
+ const o=Math.min(toH(outT),close);
+ if(i>=mid)return o-i>=3?'Half-Day':'Absent';
+ if(o>=close)return i>start+gr?'Late':'Present';
+ return o>=mid?'Half-Day':'Absent'}
+function effStatus(s,ds,r){if(r.manual)return r.status;if(!r.inTime)return 'Absent';if(!r.outTime)return ds<ld()?'Absent':null;return classify(s,r.inTime,r.outTime,ds)}
+function calc(s,ym){const[y,m]=ym.split('-').map(Number),dim=new Date(y,m,0).getDate(),today=ld();const ab=[],hd=[],lt=[];let wd=0;
  for(let d=1;d<=dim;d++){const ds=`${ym}-${pad(d)}`;if(ds>today)break;if(s.joined&&ds<s.joined)continue;if(isOff(ds))continue;wd++;
-  const r=A[ds]?.[s.id];if(!r){if(ds<today)ab++;continue}
-  if(r.status==='Absent')ab++;else if(r.status==='Half-Day')hd++;else if(r.status==='Late')lt++}
- const lr=Math.max(1,S.settings.lateRule||4),ded=ab+hd*.5+Math.floor(lt/lr)*.5,base=s.salary||0,div=S.settings.divisor||30;
- return{ab,hd,lt,ded,wd,base,net:Math.max(0,Math.round(base-ded*base/div))}}
+  const r=A[ds]?.[s.id];if(!r){if(ds<today)ab.push({d:ds,note:'No punch'});continue}
+  const st=effStatus(s,ds,r);if(!st)continue;
+  if(st==='Absent')ab.push({d:ds,in:r.inTime,out:r.outTime,note:!r.inTime?'No punch':!r.outTime?'No OUT punch':'Worked too little'});
+  else if(st==='Half-Day')hd.push({d:ds,in:r.inTime,out:r.outTime});
+  else if(st==='Late')lt.push({d:ds,in:r.inTime,out:r.outTime})}
+ const lr=Math.max(1,S.settings.lateRule||3),grp=Math.floor(lt.length/lr),ded=ab.length+hd.length*.5+grp*.5,base=s.salary||0,div=S.settings.divisor||30;
+ return{ab,hd,lt,lr,grp,ded,wd,base,net:Math.max(0,Math.round(base-ded*base/div))}}
+const fd=d=>d.split('-').reverse().join('-');
+function detailRows(ym){const R=[];S.staff.forEach(s=>{const c=calc(s,ym),L=[];
+ c.ab.forEach(x=>L.push([x.d,'Absent',x.in||'--',x.out||'--',1,x.note]));
+ c.hd.forEach(x=>L.push([x.d,'Half-Day',x.in||'--',x.out||'--',.5,'Half-day deducted']));
+ c.lt.forEach((x,i)=>{const k=i%c.lr+1,hit=k===c.lr;L.push([x.d,'Late',x.in||'--',x.out||'--',hit?.5:0,hit?`Late ${k} of ${c.lr} - half-day deducted`:`Late ${k} of ${c.lr}`])});
+ L.sort((a,b)=>a[0]<b[0]?-1:1).forEach(l=>R.push([fd(l[0]),s.id,s.name,l[1],l[2],l[3],l[4],l[5]]))});return R}
 window.loadPay=async()=>{const ym=$('payMonth').value||ld().slice(0,7);await fetchMonth(ym);
- $('payTb').innerHTML=S.staff.map(s=>{const c=calc(s,ym);return`<tr><td class="p-3"><b>${esc(s.name)}</b><div class="text-xs text-slate-400">${esc(s.id)}</div></td><td class="p-3">₹${c.base}</td><td class="p-3 text-xs">Abs <b class="text-red-400">${c.ab}</b> · HD <b class="text-yellow-400">${c.hd}</b> · Late <b class="text-blue-400">${c.lt}</b></td><td class="p-3 text-red-400 font-bold">${c.ded}</td><td class="p-3 text-emerald-400 font-black">₹${c.net}</td></tr>`}).join('')||'<tr><td class="p-4 text-slate-500" colspan="5">No staff</td></tr>'};
-window.dlCSV=()=>{const ym=$('payMonth').value;let c='\uFEFFID,Name,Role,Base,Absent,HalfDay,Late,DeductDays,Net\n';
- S.staff.forEach(s=>{const x=calc(s,ym);c+=`${s.id},"${s.name}","${s.role}",${x.base},${x.ab},${x.hd},${x.lt},${x.ded},${x.net}\n`});
- const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{type:'text/csv'}));a.download=`DSB_Payroll_${ym}.csv`;a.click();toast('CSV downloaded','s')};
-window.dlPDF=()=>{const ym=$('payMonth').value;const d=new window.jspdf.jsPDF();d.text(`Delhi School of Brilliants - Payroll ${ym}`,14,18);
- d.autoTable({startY:26,head:[['ID','Name','Base','Abs','HD','Late','Ded Days','Net']],body:S.staff.map(s=>{const x=calc(s,ym);return[s.id,s.name,'Rs.'+x.base,x.ab,x.hd,x.lt,x.ded,'Rs.'+x.net]})});
+ $('payTb').innerHTML=S.staff.map(s=>{const c=calc(s,ym),dd=a=>a.map(x=>x.d.slice(8)).join(', ');
+  const det=[c.ab.length?`<span class="text-red-400">Absent: ${dd(c.ab)}</span>`:'',c.hd.length?`<span class="text-yellow-400">Half-day: ${dd(c.hd)}</span>`:'',c.lt.length?`<span class="text-blue-400">Late: ${dd(c.lt)}${c.grp?` → -${c.grp*.5} day`:''}</span>`:''].filter(Boolean).join('<br>');
+  return`<tr><td class="p-3"><b>${esc(s.name)}</b><div class="text-xs text-slate-400">${esc(s.id)} · ${catName(s.cat)}</div></td><td class="p-3">₹${c.base}${c.base?'':' <span class="text-amber-400">⚠ set salary</span>'}</td><td class="p-3 text-xs">Abs <b class="text-red-400">${c.ab.length}</b> · HD <b class="text-yellow-400">${c.hd.length}</b> · Late <b class="text-blue-400">${c.lt.length}</b><div class="mt-1">${det}</div></td><td class="p-3 text-red-400 font-bold">${c.ded}</td><td class="p-3 text-emerald-400 font-black">₹${c.net}</td></tr>`}).join('')||'<tr><td class="p-4 text-slate-500" colspan="5">No staff</td></tr>'};
+window.dlXLSX=()=>{if(!window.XLSX)return toast('Excel library not loaded (check internet)','e');const ym=$('payMonth').value||ld().slice(0,7);
+ const sum=[['ID','Name','Category','Role','Base Salary','Working Days','Absent','Half-Day','Late','Late->Half-day','Deduct Days','Deduction Rs','Net Salary']];
+ S.staff.forEach(s=>{const c=calc(s,ym);sum.push([s.id,s.name,catName(s.cat),s.role,c.base,c.wd,c.ab.length,c.hd.length,c.lt.length,c.grp,c.ded,c.base-c.net,c.net])});
+ const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),'Summary');
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Date','ID','Name','Type','IN','OUT','Deduct (days)','Note'],...detailRows(ym)]),'Date-wise');
+ XLSX.writeFile(wb,`DSB_Payroll_${ym}.xlsx`);toast('Excel downloaded','s')};
+window.dlPDF=()=>{const ym=$('payMonth').value||ld().slice(0,7);const d=new window.jspdf.jsPDF('l');d.setFontSize(14);d.text(`Delhi School of Brilliants - Salary Report ${ym}`,14,14);
+ d.autoTable({startY:20,styles:{fontSize:8},head:[['ID','Name','Base','Work days','Absent','Half-day','Late','Late->HD','Deduct days','Net']],body:S.staff.map(s=>{const c=calc(s,ym);return[s.id,s.name,'Rs.'+c.base,c.wd,c.ab.length,c.hd.length,c.lt.length,c.grp,c.ded,'Rs.'+c.net]})});
+ d.addPage();d.setFontSize(12);d.text('Date-wise deductions',14,14);
+ d.autoTable({startY:20,styles:{fontSize:8},head:[['Date','ID','Name','Type','IN','OUT','Deduct (days)','Note']],body:detailRows(ym)});
  d.save(`DSB_Payroll_${ym}.pdf`);toast('PDF downloaded','s')};
 
 /* ---------- Staff ---------- */
-window.renderStaff=()=>{const q=$('q').value.trim().toLowerCase();
- $('staffList').innerHTML=S.staff.filter(s=>!q||s.id.toLowerCase().includes(q)||s.name.toLowerCase().includes(q)).map(s=>`
+window.renderStaff=()=>{const q=$('q').value.trim().toLowerCase(),qc=$('qc').value;
+ $('staffList').innerHTML=S.staff.filter(s=>(!q||s.id.toLowerCase().includes(q)||s.name.toLowerCase().includes(q))&&(!qc||(s.cat||'Teacher')===qc)).map(s=>{const T=timing(s,ld());return`
  <div class="gp p-3 rounded-xl flex gap-3"><img src="${s.photo||''}" class="w-14 h-14 rounded-full object-cover bg-slate-800 shrink-0">
- <div class="flex-1 min-w-0"><div class="font-bold truncate">${esc(s.name)} <span class="text-xs text-slate-400">${esc(s.id)}</span></div>
+ <div class="flex-1 min-w-0"><div class="font-bold truncate">${esc(s.name)} <span class="text-xs text-indigo-300">${esc(s.id)}</span></div>
+ ${s.salary?'':'<div class="text-xs text-amber-400">⚠ Salary not set</div>'}
  <div class="grid grid-cols-2 gap-2 my-2 text-xs">
-  <label>Salary ₹<input id="sal_${s.id}" type="number" value="${s.salary||0}" class="inp !p-1"></label>
-  <label>Grace (min)<input id="gr_${s.id}" type="number" value="${s.grace??30}" class="inp !p-1"></label>
-  <label>Shift start<input id="ci_${s.id}" type="time" value="${s.customInTime||'07:30'}" class="inp !p-1"></label>
-  <label>Role<input id="ro_${s.id}" value="${esc(s.role)}" class="inp !p-1"></label></div>
- <div class="flex gap-2"><button onclick="saveStaff('${s.id}')" class="flex-1 bg-emerald-600 py-1.5 rounded font-bold text-sm">Save</button><button onclick="delStaff('${s.id}')" class="bg-red-600/30 text-red-400 px-3 rounded">🗑</button></div></div></div>`).join('')||'<p class="text-slate-500">No staff found.</p>'};
+  <label>Salary ₹<input id="sal_${s.id}" type="number" value="${s.salary||''}" placeholder="0" class="inp !p-1"></label>
+  <label>Category<select id="ca_${s.id}" class="inp !p-1">${Object.keys(CATS).map(k=>`<option value="${k}" ${k===(s.cat||'Teacher')?'selected':''}>${CATS[k][1]}</option>`).join('')}</select></label>
+  <label>IN time<input id="ci_${s.id}" type="time" value="${s.customInTime||''}" class="inp !p-1"></label>
+  <label>OUT time<input id="co_${s.id}" type="time" value="${s.customOutTime||''}" class="inp !p-1"></label>
+  <label class="col-span-2">Role<input id="ro_${s.id}" value="${esc(s.role)}" class="inp !p-1"></label></div>
+ <div class="text-[11px] text-slate-400 mb-2">Blank IN/OUT = default (${hmf(T.start)} – ${hmf(T.close)})</div>
+ <div class="flex gap-2"><button onclick="saveStaff('${s.id}')" class="flex-1 bg-emerald-600 py-1.5 rounded font-bold text-sm">Save</button><button onclick="delStaff('${s.id}')" class="bg-red-600/30 text-red-400 px-3 rounded">🗑</button></div></div></div>`}).join('')||'<p class="text-slate-500">No staff found.</p>'};
 window.saveStaff=id=>{const s=S.staff.find(x=>x.id===id);if(!s)return;
- s.salary=parseFloat($('sal_'+id).value)||0;s.grace=parseInt($('gr_'+id).value);if(isNaN(s.grace))s.grace=30;s.customInTime=$('ci_'+id).value||'07:30';s.role=$('ro_'+id).value;saveCore();toast('Saved','s')};
+ const i=$('ci_'+id).value,o=$('co_'+id).value;if(i&&o&&i>=o)return toast('OUT time must be after IN time','e');
+ s.salary=parseFloat($('sal_'+id).value)||0;s.cat=$('ca_'+id).value;s.customInTime=i;s.customOutTime=o;s.role=$('ro_'+id).value;saveCore();toast('Saved','s');renderStaff()};
 window.delStaff=id=>{const s=S.staff.find(x=>x.id===id);if(!s||!confirm(`Delete ${s.name}? Attendance history stays but the staff is removed.`))return;
  S.staff=S.staff.filter(x=>x.id!==id);saveCore();buildMatcher();renderStaff();toast('Deleted')};
 
@@ -263,20 +312,37 @@ function renderCal(){const y=cd.getFullYear(),m=cd.getMonth();$('calTitle').text
  for(let d=1,n=new Date(y,m+1,0).getDate();d<=n;d++){const ds=`${y}-${pad(m+1)}-${pad(d)}`,sun=new Date(y,m,d).getDay()===0,hn=S.holidays[ds];
   const c=sun?'bg-red-950/50 border-red-800 text-red-300':hn?'bg-amber-950/50 border-amber-700 text-amber-200':'bg-slate-900 border-slate-800';
   h+=`<div onclick="openHol('${ds}')" class="border ${c} rounded-lg p-1.5 text-center cursor-pointer min-h-[52px]"><b>${d}</b>${sun?'<div class="text-[9px]">Sun</div>':hn?`<div class="text-[9px] truncate">${esc(hn)}</div>`:''}</div>`}
- $('calGrid').innerHTML=h}
+ $('calGrid').innerHTML=h;
+ const hs=Object.keys(S.holidays).filter(d=>d.startsWith(`${y}-${pad(m+1)}-`)).sort();
+ $('holList').innerHTML=hs.length?hs.map(d=>`<div class="flex justify-between items-center bg-slate-900 rounded-lg px-3 py-2 mb-1"><span>🎉 ${fd(d)} - ${esc(S.holidays[d])}</span><button onclick="holDel('${d}')" class="text-red-400 px-2">✕</button></div>`).join(''):'<div class="text-slate-500 text-xs">No custom holidays this month. Tap a date to add one.</div>'}
+window.holDel=d=>{if(!confirm('Remove this holiday?'))return;delete S.holidays[d];saveCore();renderCal();toast('Holiday removed')};
 window.openHol=ds=>{if(new Date(ds+'T00:00:00').getDay()===0)return toast('Sunday is always a holiday');holDate=ds;$('holD').textContent=ds;$('holR').value=S.holidays[ds]||'';$('holX').classList.toggle('hidden',!S.holidays[ds]);$('holM').classList.add('on')};
 window.saveHol=()=>{S.holidays[holDate]=$('holR').value.trim()||'School Holiday';saveCore();$('holM').classList.remove('on');renderCal();toast('Holiday saved','s')};
 window.delHol=()=>{delete S.holidays[holDate];saveCore();$('holM').classList.remove('on');renderCal();toast('Holiday removed')};
 
 /* ---------- Settings ---------- */
-function loadSet(){const s=S.settings;$('sPh').value=s.phones;$('sLR').value=s.lateRule;$('sDv').value=s.divisor;$('sCd').value=s.cooldown;$('sAp').value=s.adminPin;$('sRp').value=s.recPin}
-window.saveSet=()=>{const ap=$('sAp').value,rp=$('sRp').value;
+function loadSet(){const s=S.settings;$('sPh').value=s.phones;$('sLR').value=s.lateRule;$('sDv').value=s.divisor;$('sCd').value=s.cooldown;$('sTh').value=s.thresh||0.5;renderSeasonBox();renderCatBox();$('sAp').value=s.adminPin;$('sRp').value=s.recPin}
+const nz=(v,d)=>{const n=parseInt(v);return isNaN(n)?d:Math.max(0,n)};
+function renderSeasonBox(){const sv=S.settings.seasons;
+ const blk=(k,n)=>`<div class="border border-slate-700 rounded-lg p-3"><b>${n === 'Summer'?'☀️ Summer':'❄️ Winter'} timings</b><div class="grid grid-cols-2 gap-2 mt-2 text-xs"><label>School start<input id="${k}_start" type="time" class="inp" value="${sv[n].start}"></label><label>Grace (min)<input id="${k}_grace" type="number" class="inp" value="${sv[n].grace}"></label><label>Closing time<input id="${k}_close" type="time" class="inp" value="${sv[n].close}"></label><label>Half-day split<input id="${k}_mid" type="time" class="inp" value="${sv[n].mid}"></label></div></div>`;
+ const log=[...S.seasonLog].sort((a,b)=>a.from<b.from?-1:1).map(e=>`${e.from==='2000-01-01'?'Start':fd(e.from)}: ${e.s}`).join(' → ');
+ $('seasonBox').innerHTML=blk('su','Summer')+blk('wi','Winter')+`<div class="border border-amber-700/60 rounded-lg p-3 text-xs"><div class="mb-2">Current season: <b class="text-amber-300">${seasonFor(ld())}</b></div><div class="flex gap-2 mb-2"><select id="swS" class="inp"><option>Summer</option><option>Winter</option></select><input id="swD" type="date" class="inp" value="${ld()}"></div><button onclick="applySeason()" class="w-full bg-amber-600 py-2 rounded-lg font-bold mb-2">Switch season from this date</button><button onclick="undoSeason()" class="w-full bg-slate-800 py-1.5 rounded-lg mb-2">Undo last switch</button><div class="text-slate-400">${log}</div><div class="text-slate-500 mt-1">Tip: press Save Settings first if you changed timings.</div></div>`}
+function renderCatBox(){const ct=S.settings.cat||{};
+ $('catBox').innerHTML=`<div class="border border-slate-700 rounded-lg p-3 text-xs"><b>👥 Category default timings</b><div class="text-slate-400 mb-2">Blank = follows school season timing. A staff member's own IN/OUT (Staff tab) overrides this.</div>`+Object.keys(CATS).map(k=>`<div class="grid grid-cols-3 gap-2 items-center mb-1"><span>${CATS[k][1]}</span><input id="cat_${k}_in" type="time" class="inp !p-1" value="${ct[k]?.in||''}"><input id="cat_${k}_out" type="time" class="inp !p-1" value="${ct[k]?.out||''}"></div>`).join('')+'<div class="text-slate-500 mt-1">Columns: IN · OUT</div></div>'}
+window.applySeason=()=>{const d=$('swD').value,sn=$('swS').value;if(!d)return toast('Pick a date','e');
+ if(!confirm(`${sn} timings will apply from ${fd(d)} onward. Days before it keep the earlier season. Continue?`))return;
+ S.seasonLog=S.seasonLog.filter(e=>e.from!==d||e.from==='2000-01-01');S.seasonLog.push({from:d,s:sn});S.seasonLog.sort((a,b)=>a.from<b.from?-1:1);saveCore();renderSeasonBox();toast(`${sn} from ${fd(d)}`,'s')};
+window.undoSeason=()=>{const i=S.seasonLog.map(e=>e.from).lastIndexOf(S.seasonLog.filter(e=>e.from!=='2000-01-01').slice(-1)[0]?.from);if(i<0)return toast('Nothing to undo');S.seasonLog.splice(i,1);saveCore();renderSeasonBox();toast('Last switch removed','s')};
+window.saveSet=()=>{
+ const nc={};for(const k of Object.keys(CATS)){const i=$('cat_'+k+'_in').value,o=$('cat_'+k+'_out').value;if(i&&o&&i>=o)return toast(CATS[k][1]+': OUT must be after IN','e');if(i||o)nc[k]={in:i,out:o}}S.settings.cat=nc;
+ [['su','Summer'],['wi','Winter']].forEach(([k,n])=>{S.settings.seasons[n]={start:$(k+'_start').value||'07:30',grace:nz($(k+'_grace').value,30),close:$(k+'_close').value||'15:00',mid:$(k+'_mid').value||'11:30'}});
+ const ap=$('sAp').value,rp=$('sRp').value;
  if(!/^\d{6}$/.test(ap))return toast('Admin PIN must be 6 digits','e');if(!/^\d{4}$/.test(rp))return toast('Operator PIN must be 4 digits','e');
- Object.assign(S.settings,{phones:$('sPh').value.trim()||'919876543210',lateRule:parseInt($('sLR').value)||4,divisor:parseInt($('sDv').value)||30,cooldown:Math.max(0,parseInt($('sCd').value)||0),adminPin:ap,recPin:rp});
+ Object.assign(S.settings,{phones:$('sPh').value.trim()||'919876543210',lateRule:parseInt($('sLR').value)||4,divisor:parseInt($('sDv').value)||30,cooldown:Math.max(0,parseInt($('sCd').value)||0),thresh:Math.min(.6,Math.max(.3,parseFloat($('sTh').value)||.5)),adminPin:ap,recPin:rp});
  saveCore();toast('Settings saved','s')};
 window.backup=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({S,A,at:new Date().toISOString()})],{type:'application/json'}));a.download=`DSB_Backup_${ld()}.json`;a.click()};
 window.restore=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);
- if(d.S){S={...DEF,...d.S,settings:{...DEF.settings,...d.S.settings}}}else if(d.staffList){S.staff=d.staffList;S.holidays=d.schoolHolidays||{}}
+ if(d.S){S={...DEF,...d.S,settings:{...DEF.settings,...d.S.settings}};fixS()}else if(d.staffList){S.staff=d.staffList;S.holidays=d.schoolHolidays||{}}
  A=d.A||d.attendanceRecords||A;saveCore();
  if(db)for(const dt in A)for(const id in A[dt])saveAtt(dt,id);
  toast('Restored','s');setTimeout(()=>location.reload(),1200)}catch(x){toast('Invalid backup file','e')}};r.readAsText(f)};
@@ -294,17 +360,17 @@ window.closeRec=()=>{$('rec').classList.remove('on');rStream&&rStream.getTracks(
 window.deepScan=async()=>{if(!ready)return toast('AI still loading','e');const b=$('rScanBtn');b.disabled=true;samples=[];photo=null;const v=$('rv');$('rmsg').textContent='Scanning... move head slightly';
  for(let i=1;i<=10;i++){
   try{const d=await faceapi.detectSingleFace(v,new faceapi.SsdMobilenetv1Options({minConfidence:.7})).withFaceLandmarks().withFaceDescriptor();
-   if(d){samples.push(Array.from(d.descriptor));if(!photo){const c=document.createElement('canvas');c.width=c.height=120;const vw=v.videoWidth,vh=v.videoHeight,sz=Math.min(vw,vh);c.getContext('2d').drawImage(v,(vw-sz)/2,(vh-sz)/2,sz,sz,0,0,120,120);photo=c.toDataURL('image/jpeg',.6)}}}catch(e){}
+   if(d){samples.push(Array.from(d.descriptor).map(x=>+x.toFixed(3)));if(!photo){const c=document.createElement('canvas');c.width=c.height=96;const vw=v.videoWidth,vh=v.videoHeight,sz=Math.min(vw,vh);c.getContext('2d').drawImage(v,(vw-sz)/2,(vh-sz)/2,sz,sz,0,0,96,96);photo=c.toDataURL('image/jpeg',.5)}}}catch(e){}
   $('rbar').style.width=i*10+'%';await new Promise(r=>setTimeout(r,800))}
  if(samples.length){const mean=samples[0].map((_,i)=>samples.reduce((a,s)=>a+s[i],0)/samples.length);samples=samples.filter(s=>dist(s,mean)<0.5)}
  if(samples.length<3){$('rmsg').textContent='Face not clear. Improve light, look at camera, retry.';b.disabled=false;return toast('Scan failed - only '+samples.length+' good frames','e')}
- samples=samples.filter((_,i)=>i%Math.ceil(samples.length/6)===0).slice(0,6);
+ samples=samples.filter((_,i)=>i%Math.ceil(samples.length/6)===0).slice(0,5);
  $('rimg').src=photo;$('rimg').classList.remove('hidden');b.classList.add('hidden');$('rSaveBtn').classList.remove('hidden');$('rmsg').textContent=`Scan OK (${samples.length} samples)`;speak('Biometric scan completed');toast('Scan complete','s')};
 window.saveNewStaff=()=>{const n=$('rName').value.trim(),r=$('rRole').value.trim();if(!n||!r)return toast('Enter name and role','e');if(!samples.length)return toast('Scan first','e');
- if(matcher)for(const sm of samples){const r=best(sm,matcher)[0];if(r&&r.d<0.5){const o=S.staff.find(x=>x.id===r.id);return toast(`Face already registered as ${o?o.name:r.id}. Delete that entry first if re-registering.`,'e')}}
- const nums=S.staff.map(s=>parseInt(s.id.split('-')[1])||100);const id='TCH-'+(Math.max(100,...nums)+1);
- S.staff.push({id,name:n,role:r,salary:25000,grace:30,customInTime:'07:30',joined:ld(),photo,faceDescriptors:samples});
- saveCore();buildMatcher();speak(`${n} registered`);toast('Staff registered','s');closeRec();refreshAdmin()};
+ if(matcher)for(const sm of samples){const r=best(sm,matcher)[0];if(r&&r.d<0.45){const o=S.staff.find(x=>x.id===r.id);return toast(`Face already registered as ${o?o.name:r.id}. Delete that entry first if re-registering.`,'e')}}
+ const cat=$('rCat').value,pre=(CATS[cat]||CATS.Teacher)[0];const nums=S.staff.filter(s=>s.id.startsWith(pre+'-')).map(s=>parseInt(s.id.split('-')[1])||100);const id=pre+'-'+(Math.max(100,...nums)+1);
+ S.staff.push({id,cat,name:n,role:r,salary:0,customInTime:'',customOutTime:'',joined:ld(),photo,faceDescriptors:samples});
+ saveCore();buildMatcher();speak(`${n} registered`);alert(`Registered: ${n}\nCategory: ${catName(cat)}\nUnique code: ${id}`);toast(`Registered ${n} (${id})`,'s');closeRec();refreshAdmin()};
 
 loadAI();
 </script></body></html>

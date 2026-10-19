@@ -23,13 +23,24 @@ body{font-family:system-ui,sans-serif;background:#020617;color:#f1f5f9}
  <div class="text-5xl mb-3 animate-pulse">🧠</div><div class="text-xl font-bold">Loading AI & Cloud Sync...</div>
  <div id="loaderTxt" class="text-xs text-slate-400 mt-2 px-4 text-center">Please wait</div></div>
 
+<!-- LOGIN -->
+<div id="login" style="display:none" class="fixed inset-0 z-[250] bg-slate-950 items-center justify-center p-4">
+ <div class="gp rounded-2xl p-6 w-full max-w-sm space-y-3 text-center">
+  <div class="text-4xl">🏫</div>
+  <h2 class="text-xl font-black">Delhi School of Brilliants</h2>
+  <p class="text-xs text-slate-400">Login to continue</p>
+  <input id="lgE" type="email" class="inp" placeholder="Email" autocomplete="username">
+  <input id="lgP" type="password" class="inp" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+  <div id="lgM" class="text-xs text-red-400 min-h-[1rem]"></div>
+  <button onclick="doLogin()" class="w-full bg-blue-600 py-3 rounded-xl font-black">Login</button></div></div>
+
 <!-- KIOSK -->
 <div class="h-screen flex flex-col items-center justify-center relative overflow-hidden">
  <div class="absolute top-3 right-3 flex gap-2 z-10">
   <button onclick="askPin('rec')" class="bg-indigo-600 px-4 py-2 rounded-full text-sm font-semibold">➕ Operator</button>
   <button onclick="askPin('admin')" class="bg-slate-700 px-4 py-2 rounded-full text-sm font-semibold">🔒 Admin</button></div>
  <h1 class="text-2xl font-black mb-1 text-center px-2">🏫 Delhi School of Brilliants</h1>
- <p class="text-slate-400 text-xs mb-3">Face Attendance Kiosk v8</p>
+ <p class="text-slate-400 text-xs mb-3">Face Attendance Kiosk v9</p>
  <div class="relative mb-3"><video id="kv" class="vc" autoplay muted playsinline></video>
   <svg class="ring" viewBox="0 0 260 260"><circle cx="130" cy="130" r="122" stroke="rgba(255,255,255,.1)"/><circle id="kr" cx="130" cy="130" r="122" stroke="#10b981" stroke-dasharray="767" stroke-dashoffset="767" style="transition:stroke-dashoffset .2s"/></svg></div>
  <div id="kname" class="mb-3 px-6 py-3 rounded-xl bg-slate-900 border border-slate-700 text-sm font-bold text-slate-300 min-w-[280px] text-center">Position face in camera...</div>
@@ -88,7 +99,8 @@ body{font-family:system-ui,sans-serif;background:#020617;color:#f1f5f9}
    <div><label class="text-xs text-slate-400">Operator PIN (4 digits)</label><input id="sRp" type="password" class="inp"></div>
    <div class="flex gap-2"><button onclick="backup()" class="flex-1 bg-slate-800 border border-emerald-500/40 text-emerald-400 py-2 rounded-lg font-bold text-sm">⬇ Backup</button>
     <label class="flex-1 bg-slate-800 border border-indigo-500/40 text-indigo-400 py-2 rounded-lg font-bold text-sm text-center cursor-pointer">⬆ Restore<input type="file" accept=".json" class="hidden" onchange="restore(event)"></label></div>
-   <button onclick="saveSet()" class="w-full bg-blue-600 py-3 rounded-xl font-bold">Save Settings</button></div></div>
+   <button onclick="saveSet()" class="w-full bg-blue-600 py-3 rounded-xl font-bold">Save Settings</button>
+   <button onclick="doLogout()" class="w-full bg-red-600/20 text-red-400 py-2 rounded-lg font-bold text-sm">🚪 Logout</button></div></div>
  </div></div>
 
 <!-- OPERATOR -->
@@ -127,11 +139,12 @@ body{font-family:system-ui,sans-serif;background:#020617;color:#f1f5f9}
 <div id="toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-600 px-5 py-3 rounded-full z-[300] font-bold text-sm opacity-0 transition-opacity pointer-events-none"></div>
 
 <script type="module">
-let initializeApp,getFirestore,doc,setDoc,getDoc,onSnapshot;
+let initializeApp,getFirestore,doc,setDoc,getDoc,onSnapshot,getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged;
 try{({initializeApp}=await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"));
- ({getFirestore,doc,setDoc,getDoc,onSnapshot}=await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"))}catch(e){console.warn('Firebase unavailable - local mode',e)}
+ ({getFirestore,doc,setDoc,getDoc,onSnapshot}=await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"));
+ ({getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged}=await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"))}catch(e){console.warn('Firebase unavailable',e)}
 const $=i=>document.getElementById(i); window.$=$;
-const cfg={apiKey:"AIzaSyCfxMEK4HOe6aTX2aTmsjv1fyAYBQuqx_xY",authDomain:"dsb-ap.firebaseapp.com",projectId:"dsb-ap",storageBucket:"dsb-ap.firebasestorage.app",messagingSenderId:"662248320552",appId:"1:662248320552:web:132db92cdeecdaeeec0f1d"};
+const cfg={apiKey:"AIzaSyCfxMEk4HOe6aTX2aTMsjv1fyAYBQux_xY",authDomain:"dsb-ap.firebaseapp.com",projectId:"dsb-ap",storageBucket:"dsb-ap.firebasestorage.app",messagingSenderId:"662248320552",appId:"1:662248320552:web:132db92cdeecdaeeec0f1d"};
 const pad=n=>String(n).padStart(2,'0');
 const ld=(d=new Date())=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const hm=(d=new Date())=>`${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -153,18 +166,28 @@ function toast(m,t){const e=$('toast');e.textContent=(t==='e'?'❌ ':t==='s'?'�
 function speak(t){try{speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(t))}catch(e){}}
 addEventListener('pointerdown',()=>{try{speechSynthesis.speak(new SpeechSynthesisUtterance(''))}catch(e){}},{once:true});
 
-/* ---------- Cloud ---------- */
-let db=null,coreRef=null;const ym0=ld().slice(0,7);
+/* ---------- Cloud + Login ---------- */
+let db=null,coreRef=null,auth=null,authed=false,unsubs=[];const ym0=ld().slice(0,7);
 const attRef=ym=>doc(db,'dsb_att',ym);
-function saveCore(){S.ts=Date.now();saveLocal();if(!db)return;const c=JSON.parse(JSON.stringify(S));c.staff.forEach(s=>s.faceDescriptors=(s.faceDescriptors||[]).map(v=>({v})));
+function saveCore(){S.ts=Date.now();saveLocal();if(!db||!authed)return;const c=JSON.parse(JSON.stringify(S));c.staff.forEach(s=>s.faceDescriptors=(s.faceDescriptors||[]).map(v=>({v})));
  setDoc(coreRef,c).catch(e=>{console.error(e);toast('Cloud save failed: '+(e.code||e.message),'e')})}
-function saveAtt(date,id){saveLocal();if(db)setDoc(attRef(date.slice(0,7)),JSON.parse(JSON.stringify({[date]:{[id]:A[date][id]}})),{merge:true}).catch(e=>console.error(e))}
+function saveAtt(date,id){saveLocal();if(db&&authed)setDoc(attRef(date.slice(0,7)),JSON.parse(JSON.stringify({[date]:{[id]:A[date][id]}})),{merge:true}).catch(e=>console.error(e))}
 function mergeAtt(d){for(const dt in d){if(!/^\d{4}-\d\d-\d\d$/.test(dt))continue;A[dt]=Object.assign(A[dt]||{},d[dt])}saveLocal()}
-async function fetchMonth(ym){if(!db)return;try{const s=await getDoc(attRef(ym));if(s.exists())mergeAtt(s.data())}catch(e){}}
-try{const app=initializeApp(cfg);db=getFirestore(app);coreRef=doc(db,'dsb_data','core');
- onSnapshot(coreRef,s=>{if(s.exists()){const d=s.data();if((d.ts||0)>S.ts){S={...DEF,...d,settings:{...DEF.settings,...d.settings}};S.staff.forEach(s=>s.faceDescriptors=(s.faceDescriptors||[]).map(x=>Array.isArray(x)?x:x.v));fixS();saveLocal();buildMatcher();refreshAdmin()}}else if(S.staff.length)saveCore()},e=>console.error(e));
- onSnapshot(attRef(ym0),s=>{if(s.exists()){mergeAtt(s.data());refreshAdmin()}},e=>console.error(e));
-}catch(e){console.error('Firebase off, local mode',e)}
+async function fetchMonth(ym){if(!db||!authed)return;try{const s=await getDoc(attRef(ym));if(s.exists())mergeAtt(s.data())}catch(e){}}
+function startCloud(){if(!db||unsubs.length)return;
+ unsubs.push(onSnapshot(coreRef,s=>{if(s.exists()){const d=s.data();if((d.ts||0)>S.ts){S={...DEF,...d,settings:{...DEF.settings,...d.settings}};S.staff.forEach(s=>s.faceDescriptors=(s.faceDescriptors||[]).map(x=>Array.isArray(x)?x:x.v));fixS();saveLocal();buildMatcher();refreshAdmin()}}else if(S.staff.length)saveCore()},e=>console.error(e)));
+ unsubs.push(onSnapshot(attRef(ym0),s=>{if(s.exists()){mergeAtt(s.data());refreshAdmin()}},e=>console.error(e)))}
+function stopCloud(){unsubs.forEach(f=>{try{f()}catch(e){}});unsubs=[]}
+try{const app=initializeApp(cfg);auth=getAuth(app);db=getFirestore(app);coreRef=doc(db,'dsb_data','core')}catch(e){console.error('Firebase init failed',e)}
+if(auth){onAuthStateChanged(auth,u=>{authed=!!u;
+ if(u){$('login').style.display='none';startCloud();refreshAdmin()}
+ else{stopCloud();$('admin').classList.remove('on');$('rec').classList.remove('on');$('login').style.display='flex'}})}
+else{$('login').style.display='flex';$('lgM').textContent='Cannot reach Firebase. Check internet and reload.'}
+window.doLogin=async()=>{const e=$('lgE').value.trim(),p=$('lgP').value;if(!auth)return;if(!e||!p){$('lgM').textContent='Enter email and password';return}
+ $('lgM').textContent='';
+ try{await signInWithEmailAndPassword(auth,e,p);$('lgP').value=''}
+ catch(x){$('lgM').textContent=['auth/invalid-credential','auth/wrong-password','auth/user-not-found'].includes(x.code)?'Wrong email or password':'Login failed: '+(x.code||x.message)}};
+window.doLogout=()=>{if(auth&&confirm('Logout? Kiosk will stop until someone logs in again.'))signOut(auth)};
 
 /* ---------- Face AI ---------- */
 let ready=false,matcher=null;const MARGIN=0.08;
@@ -182,7 +205,7 @@ camera($('kv')).catch(()=>toast('Camera access denied (HTTPS required)','e'));
 
 let auto=true,detId=null,streak=0,lastId=null,pauseUntil=0;
 async function loop(){
- try{if(ready&&matcher&&Date.now()>pauseUntil&&$('kv').readyState>=2){
+ try{if(ready&&authed&&matcher&&Date.now()>pauseUntil&&$('kv').readyState>=2){
   const det=await faceapi.detectSingleFace($('kv'),new faceapi.SsdMobilenetv1Options({minConfidence:.6})).withFaceLandmarks().withFaceDescriptor();
   const nm=$('kname'),rg=$('kr');
   if(det){const m=det.detection.box.width<70?{label:'unknown'}:identify(det.descriptor);
@@ -195,11 +218,12 @@ async function loop(){
  }}catch(e){}
  setTimeout(loop,250)}
 window.toggleAuto=()=>{auto=!auto;const b=$('autoBtn');b.textContent=auto?'Face AI Auto: ACTIVE':'Face AI Auto: OFF (manual)';b.className=b.className.replace(/text-(emerald|red)-400/,auto?'text-emerald-400':'text-red-400');streak=0;$('kr').style.strokeDashoffset=767}
-window.manualPunch=()=>{if(!ready)return toast('AI still loading','e');if(!S.staff.some(s=>(s.faceDescriptors||[]).length))return toast('No staff with face data. Register staff first.','e');detId?punch(detId):toast('No recognised face in camera','e')};
+window.manualPunch=()=>{if(!authed)return toast('Login first','e');if(!ready)return toast('AI still loading','e');if(!S.staff.some(s=>(s.faceDescriptors||[]).length))return toast('No staff with face data. Register staff first.','e');detId?punch(detId):toast('No recognised face in camera','e')};
 
 /* ---------- Punch ---------- */
 const isOff=ds=>new Date(ds+'T00:00:00').getDay()===0||!!S.holidays[ds];
 function punch(id){
+ if(!authed)return;
  const s=S.staff.find(x=>x.id===id);if(!s)return;
  const now=new Date(),ds=ld(now),t=hm(now),ph=toH(t);pauseUntil=Date.now()+5000;
  if(isOff(ds)){speak('Today is a holiday');return toast('Today is a holiday / Sunday','e')}
@@ -218,7 +242,7 @@ $('cdate').textContent=new Date().toLocaleDateString('en-IN',{weekday:'long',yea
 
 /* ---------- PIN ---------- */
 let pinFor='';
-window.askPin=w=>{pinFor=w;$('pinI').value='';$('pinM').classList.add('on');setTimeout(()=>$('pinI').focus(),50)};
+window.askPin=w=>{if(!authed)return toast('Login first','e');pinFor=w;$('pinI').value='';$('pinM').classList.add('on');setTimeout(()=>$('pinI').focus(),50)};
 window.checkPin=()=>{const v=$('pinI').value;
  if(pinFor==='admin'&&v===S.settings.adminPin){$('pinM').classList.remove('on');$('admin').classList.add('on');loadSet();tab('today')}
  else if(pinFor==='rec'&&v===S.settings.recPin){$('pinM').classList.remove('on');openRec()}
@@ -352,7 +376,7 @@ window.backup=()=>{const a=document.createElement('a');a.href=URL.createObjectUR
 window.restore=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);
  if(d.S){S={...DEF,...d.S,settings:{...DEF.settings,...d.S.settings}};fixS()}else if(d.staffList){S.staff=d.staffList;S.holidays=d.schoolHolidays||{}}
  A=d.A||d.attendanceRecords||A;saveCore();
- if(db)for(const dt in A)for(const id in A[dt])saveAtt(dt,id);
+ if(db&&authed)for(const dt in A)for(const id in A[dt])saveAtt(dt,id);
  toast('Restored','s');setTimeout(()=>location.reload(),1200)}catch(x){toast('Invalid backup file','e')}};r.readAsText(f)};
 function todayData(){const ds=ld(),rs=A[ds]||{},o={Present:[],Late:[],'Half-Day':[],Absent:[]};
  S.staff.forEach(s=>{const r=rs[s.id],st=r&&o[r.status]?r.status:'Absent';o[st].push({s,in:r?.inTime||'--',out:r?.outTime||'--'})});return{ds,o}}

@@ -144,7 +144,7 @@ try{({initializeApp}=await import("https://www.gstatic.com/firebasejs/11.6.1/fir
  ({getFirestore,doc,setDoc,getDoc,onSnapshot}=await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"));
  ({getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged}=await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"))}catch(e){console.warn('Firebase unavailable',e)}
 const $=i=>document.getElementById(i); window.$=$;
-const cfg={apiKey:"AIzaSyCfxMEK4HOe6aTX2aTmsjv1fyAYBQuqx_xY",authDomain:"dsb-ap.firebaseapp.com",projectId:"dsb-ap",storageBucket:"dsb-ap.firebasestorage.app",messagingSenderId:"662248320552",appId:"1:662248320552:web:132db92cdeecdaeeec0f1d"};
+const cfg={apiKey:"AIzaSyCfxMEk4HOe6aTX2aTMsjv1fyAYBQux_xY",authDomain:"dsb-ap.firebaseapp.com",projectId:"dsb-ap",storageBucket:"dsb-ap.firebasestorage.app",messagingSenderId:"662248320552",appId:"1:662248320552:web:132db92cdeecdaeeec0f1d"};
 const pad=n=>String(n).padStart(2,'0');
 const ld=(d=new Date())=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const hm=(d=new Date())=>`${pad(d.getHours())}:${pad(d.getMinutes())}`;

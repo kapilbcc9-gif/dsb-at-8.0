@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>DSB Smart Attendance Kiosk</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#020617">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
@@ -40,7 +44,7 @@ body{font-family:system-ui,sans-serif;background:#020617;color:#f1f5f9}
   <button onclick="askPin('rec')" class="bg-indigo-600 px-4 py-2 rounded-full text-sm font-semibold">➕ Operator</button>
   <button onclick="askPin('admin')" class="bg-slate-700 px-4 py-2 rounded-full text-sm font-semibold">🔒 Admin</button></div>
  <h1 class="text-2xl font-black mb-1 text-center px-2">🏫 Delhi School of Brilliants</h1>
- <p class="text-slate-400 text-xs mb-3">Face Attendance Kiosk v9</p>
+ <p class="text-slate-400 text-xs mb-3">Face Attendance Kiosk v10</p>
  <div class="relative mb-3"><video id="kv" class="vc" autoplay muted playsinline></video>
   <svg class="ring" viewBox="0 0 260 260"><circle cx="130" cy="130" r="122" stroke="rgba(255,255,255,.1)"/><circle id="kr" cx="130" cy="130" r="122" stroke="#10b981" stroke-dasharray="767" stroke-dashoffset="767" style="transition:stroke-dashoffset .2s"/></svg></div>
  <div id="kname" class="mb-3 px-6 py-3 rounded-xl bg-slate-900 border border-slate-700 text-sm font-bold text-slate-300 min-w-[280px] text-center">Position face in camera...</div>
@@ -136,12 +140,13 @@ body{font-family:system-ui,sans-serif;background:#020617;color:#f1f5f9}
  <input id="holR" class="inp mb-3" placeholder="Festival name (e.g. Diwali)">
  <div class="flex gap-2"><button onclick="$('holM').classList.remove('on')" class="flex-1 bg-slate-700 py-2 rounded-xl">Cancel</button><button onclick="saveHol()" class="flex-1 bg-amber-600 py-2 rounded-xl font-bold">Save</button></div>
  <button id="holX" onclick="delHol()" class="w-full mt-2 bg-red-600/20 text-red-400 py-2 rounded-xl text-xs font-bold hidden">Remove Holiday</button></div></div>
+<div id="net" style="display:none" class="fixed top-0 inset-x-0 z-[260] bg-amber-500 text-black text-center text-xs font-bold py-1"></div>
 <div id="toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-600 px-5 py-3 rounded-full z-[300] font-bold text-sm opacity-0 transition-opacity pointer-events-none"></div>
 
 <script type="module">
-let initializeApp,getFirestore,doc,setDoc,getDoc,onSnapshot,getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged;
+let initializeApp,getFirestore,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,doc,setDoc,getDoc,onSnapshot,getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged;
 try{({initializeApp}=await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"));
- ({getFirestore,doc,setDoc,getDoc,onSnapshot}=await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"));
+ ({getFirestore,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,doc,setDoc,getDoc,onSnapshot}=await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"));
  ({getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged}=await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"))}catch(e){console.warn('Firebase unavailable',e)}
 const $=i=>document.getElementById(i); window.$=$;
 const cfg={apiKey:"AIzaSyCfxMEk4HOe6aTX2aTMsjv1fyAYBQux_xY",authDomain:"dsb-ap.firebaseapp.com",projectId:"dsb-ap",storageBucket:"dsb-ap.firebasestorage.app",messagingSenderId:"662248320552",appId:"1:662248320552:web:132db92cdeecdaeeec0f1d"};
@@ -167,18 +172,24 @@ function speak(t){try{speechSynthesis.cancel();speechSynthesis.speak(new SpeechS
 addEventListener('pointerdown',()=>{try{speechSynthesis.speak(new SpeechSynthesisUtterance(''))}catch(e){}},{once:true});
 
 /* ---------- Cloud + Login ---------- */
+let pend=0,metaPend=false;
+function netUI(){const off=!navigator.onLine,n=pend>0||metaPend,e=$('net');
+ if(off||n){e.style.display='block';e.textContent=off?(n?'OFFLINE - punches are saved on this tablet and will upload when internet returns':'OFFLINE - no internet. Punches will be saved on this tablet'):'Syncing to cloud...'}
+ else e.style.display='none'}
+const track=p=>{pend++;netUI();return p.finally(()=>{pend--;netUI()})};
+addEventListener('online',netUI);addEventListener('offline',netUI);
 let db=null,coreRef=null,auth=null,authed=false,unsubs=[];const ym0=ld().slice(0,7);
 const attRef=ym=>doc(db,'dsb_att',ym);
 function saveCore(){S.ts=Date.now();saveLocal();if(!db||!authed)return;const c=JSON.parse(JSON.stringify(S));c.staff.forEach(s=>s.faceDescriptors=(s.faceDescriptors||[]).map(v=>({v})));
- setDoc(coreRef,c).catch(e=>{console.error(e);toast('Cloud save failed: '+(e.code||e.message),'e')})}
-function saveAtt(date,id){saveLocal();if(db&&authed)setDoc(attRef(date.slice(0,7)),JSON.parse(JSON.stringify({[date]:{[id]:A[date][id]}})),{merge:true}).catch(e=>console.error(e))}
+ track(setDoc(coreRef,c)).catch(e=>{console.error(e);toast('Cloud save failed: '+(e.code||e.message),'e')})}
+function saveAtt(date,id){saveLocal();if(db&&authed)track(setDoc(attRef(date.slice(0,7)),JSON.parse(JSON.stringify({[date]:{[id]:A[date][id]}})),{merge:true})).catch(e=>console.error(e))}
 function mergeAtt(d){for(const dt in d){if(!/^\d{4}-\d\d-\d\d$/.test(dt))continue;A[dt]=Object.assign(A[dt]||{},d[dt])}saveLocal()}
 async function fetchMonth(ym){if(!db||!authed)return;try{const s=await getDoc(attRef(ym));if(s.exists())mergeAtt(s.data())}catch(e){}}
 function startCloud(){if(!db||unsubs.length)return;
  unsubs.push(onSnapshot(coreRef,s=>{if(s.exists()){const d=s.data();if((d.ts||0)>S.ts){S={...DEF,...d,settings:{...DEF.settings,...d.settings}};S.staff.forEach(s=>s.faceDescriptors=(s.faceDescriptors||[]).map(x=>Array.isArray(x)?x:x.v));fixS();saveLocal();buildMatcher();refreshAdmin()}}else if(S.staff.length)saveCore()},e=>console.error(e)));
- unsubs.push(onSnapshot(attRef(ym0),s=>{if(s.exists()){mergeAtt(s.data());refreshAdmin()}},e=>console.error(e)))}
+ unsubs.push(onSnapshot(attRef(ym0),{includeMetadataChanges:true},s=>{metaPend=s.metadata.hasPendingWrites;netUI();if(s.exists()){mergeAtt(s.data());refreshAdmin()}},e=>console.error(e)))}
 function stopCloud(){unsubs.forEach(f=>{try{f()}catch(e){}});unsubs=[]}
-try{const app=initializeApp(cfg);auth=getAuth(app);db=getFirestore(app);coreRef=doc(db,'dsb_data','core')}catch(e){console.error('Firebase init failed',e)}
+try{const app=initializeApp(cfg);auth=getAuth(app);try{db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})})}catch(e){console.warn('Offline cache unavailable',e);db=getFirestore(app)}coreRef=doc(db,'dsb_data','core')}catch(e){console.error('Firebase init failed',e)}
 if(auth){onAuthStateChanged(auth,u=>{authed=!!u;
  if(u){$('login').style.display='none';startCloud();refreshAdmin()}
  else{stopCloud();$('admin').classList.remove('on');$('rec').classList.remove('on');$('login').style.display='flex'}})}
@@ -421,5 +432,8 @@ window.saveNewStaff=()=>{const n=$('rName').value.trim(),r=$('rRole').value.trim
  S.staff.push({id,cat,name:n,role:r,salary:0,customInTime:'',customOutTime:'',joined:ld(),photo,faceDescriptors:samples});
  saveCore();buildMatcher();speak(`${n} registered`);alert(`Registered: ${n}\nCategory: ${catName(cat)}\nUnique code: ${id}`);toast(`Registered ${n} (${id})`,'s');closeRec();refreshAdmin()};
 
+if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(e=>console.warn('SW failed',e));
+try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+netUI();
 loadAI();
 </script></body></html>

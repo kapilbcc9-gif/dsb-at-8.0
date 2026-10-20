@@ -44,7 +44,7 @@ body{font-family:system-ui,sans-serif;background:#020617;color:#f1f5f9}
   <button onclick="askPin('rec')" class="bg-indigo-600 px-4 py-2 rounded-full text-sm font-semibold">➕ Operator</button>
   <button onclick="askPin('admin')" class="bg-slate-700 px-4 py-2 rounded-full text-sm font-semibold">🔒 Admin</button></div>
  <h1 class="text-2xl font-black mb-1 text-center px-2">🏫 Delhi School of Brilliants</h1>
- <p class="text-slate-400 text-xs mb-3">Face Attendance Kiosk v10</p>
+ <p class="text-slate-400 text-xs mb-3">Face Attendance Kiosk v10.1</p>
  <div class="relative mb-3"><video id="kv" class="vc" autoplay muted playsinline></video>
   <svg class="ring" viewBox="0 0 260 260"><circle cx="130" cy="130" r="122" stroke="rgba(255,255,255,.1)"/><circle id="kr" cx="130" cy="130" r="122" stroke="#10b981" stroke-dasharray="767" stroke-dashoffset="767" style="transition:stroke-dashoffset .2s"/></svg></div>
  <div id="kname" class="mb-3 px-6 py-3 rounded-xl bg-slate-900 border border-slate-700 text-sm font-bold text-slate-300 min-w-[280px] text-center">Position face in camera...</div>
@@ -68,6 +68,7 @@ body{font-family:system-ui,sans-serif;background:#020617;color:#f1f5f9}
    <button onclick="$('admin').classList.remove('on')" class="px-3 py-2 rounded-lg bg-red-600/30 text-red-400 font-bold">✕</button></div></div>
  <div class="flex-1 overflow-y-auto p-4 pb-24">
   <div id="t-today" class="tc">
+   <div class="flex items-center gap-2 mb-3"><label class="text-xs text-slate-400">Date</label><input type="date" id="tDay" class="inp !w-auto" onchange="setDay(this.value)"><button onclick="setDay('')" class="bg-slate-800 px-3 py-2 rounded-lg text-xs font-bold">Today</button></div>
    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 text-center">
     <div class="gp p-3 rounded-xl"><div id="sT" class="text-3xl font-black text-blue-400">0</div><div class="text-xs text-slate-400">Total</div></div>
     <div class="gp p-3 rounded-xl"><div id="sP" class="text-3xl font-black text-emerald-400">0</div><div class="text-xs text-slate-400">Present</div></div>
@@ -255,7 +256,7 @@ $('cdate').textContent=new Date().toLocaleDateString('en-IN',{weekday:'long',yea
 let pinFor='';
 window.askPin=w=>{if(!authed)return toast('Login first','e');pinFor=w;$('pinI').value='';$('pinM').classList.add('on');setTimeout(()=>$('pinI').focus(),50)};
 window.checkPin=()=>{const v=$('pinI').value;
- if(pinFor==='admin'&&v===S.settings.adminPin){$('pinM').classList.remove('on');$('admin').classList.add('on');loadSet();tab('today')}
+ if(pinFor==='admin'&&v===S.settings.adminPin){$('pinM').classList.remove('on');$('admin').classList.add('on');loadSet();tDate='';$('tDay').max=ld();$('tDay').value=ld();tab('today')}
  else if(pinFor==='rec'&&v===S.settings.recPin){$('pinM').classList.remove('on');openRec()}
  else{toast('Invalid PIN','e');speak('Invalid PIN')}};
 
@@ -268,14 +269,20 @@ window.tab=t=>{cur=t;document.querySelectorAll('.tc').forEach(e=>e.classList.add
 function refreshAdmin(){if($('rec').classList.contains('on'))opSummary();if(!$('admin').classList.contains('on'))return;
  ({today:renderToday,pay:loadPay,staff:renderStaff,cal:renderCal,set:()=>{}})[cur]()}
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function renderToday(){const ds=ld(),rs=A[ds]||{};let p=0,a=0,l=0,h='';
- {const P=SP(ds);$('holNote').textContent=isOff(ds)?'🎉 Today is '+(S.holidays[ds]||'Sunday')+' (holiday)':`${seasonFor(ds)} timing: start ${P.start}, grace ${P.grace} min, closes ${P.close}`}
+let tDate='';
+window.setDay=async v=>{const t=ld();if(v&&v>t){toast('Future dates not allowed','e');v=t}tDate=(!v||v===t)?'':v;const el=$('tDay');if(el){el.max=t;el.value=tDate||t}if(tDate)await fetchMonth(tDate.slice(0,7));renderToday()};
+function renderToday(){const ds=tDate||ld(),rs=A[ds]||{};let p=0,a=0,l=0,h='';
+ {const P=SP(ds);$('holNote').textContent=isOff(ds)?'🎉 '+(ds===ld()?'Today':fd(ds))+' is '+(S.holidays[ds]||'Sunday')+' (holiday)':`${seasonFor(ds)} timing: start ${P.start}, grace ${P.grace} min, closes ${P.close}`}
  S.staff.forEach(s=>{const r=rs[s.id];const st=r?r.status:'-';
   if(st==='Present')p++;else if(st==='Late'||st==='Half-Day')l++;else a++;
-  h+=`<tr><td class="p-3"><b>${esc(s.name)}</b><div class="text-xs text-slate-400">${esc(s.id)} · ${catName(s.cat)} · ${esc(s.role)}</div></td><td class="p-3 font-bold text-emerald-300">${r?.inTime||'--'}</td><td class="p-3 font-bold text-sky-300">${r?.outTime||'--'}</td><td class="p-3"><select class="bg-slate-800 border border-slate-700 rounded p-1" onchange="setStatus('${s.id}',this.value)">${['-','Present','Late','Half-Day','Absent'].map(o=>`<option ${o===st?'selected':''}>${o}</option>`).join('')}</select></td></tr>`});
+  h+=`<tr><td class="p-3"><b>${esc(s.name)}</b><div class="text-xs text-slate-400">${esc(s.id)} · ${catName(s.cat)} · ${esc(s.role)}</div></td><td class="p-3 font-bold text-emerald-300">${r?.inTime||'--'}</td><td class="p-3 font-bold text-sky-300">${r?.outTime||'--'}</td><td class="p-3"><select class="bg-slate-800 border border-slate-700 rounded p-1" onchange="setStatus('${s.id}',this.value)">${['-','Present','Late','Half-Day','Absent','Auto'].map(o=>`<option value="${o}" ${o===st?'selected':''}>${o==='Auto'?'Auto (recalc)':o}</option>`).join('')}</select></td></tr>`});
  $('sT').textContent=S.staff.length;$('sP').textContent=p;$('sA').textContent=a;$('sL').textContent=l;
  $('todayTb').innerHTML=h||'<tr><td class="p-4 text-slate-500" colspan="4">No staff yet. Use Operator → register staff.</td></tr>'}
-window.setStatus=(id,v)=>{if(v==='-')return;const ds=ld();A[ds]=A[ds]||{};const r=A[ds][id]||{inTime:null,outTime:null};r.status=v;r.manual=true;A[ds][id]=r;saveAtt(ds,id);toast('Status updated','s');renderToday()};
+window.setStatus=(id,v)=>{if(v==='-')return;const ds=tDate||ld();A[ds]=A[ds]||{};const r=A[ds][id]||{inTime:null,outTime:null};
+ if(v==='Auto'){const s=S.staff.find(x=>x.id===id);r.manual=false;r.status=(s&&r.inTime)?classify(s,r.inTime,r.outTime,ds):'Absent'}
+ else{r.status=v;r.manual=true}
+ r.edited=new Date().toISOString();r.by=(auth&&auth.currentUser&&auth.currentUser.email)||'';
+ A[ds][id]=r;saveAtt(ds,id);toast('Status updated'+(ds!==ld()?' for '+fd(ds):''),'s');renderToday()};
 
 /* ---------- Payroll ---------- */
 /* Rules: shift 07:30 + grace 30 min (till 08:00 = on time). School closes 15:00 - time after closing is ignored (no extra pay).

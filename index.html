@@ -44,7 +44,7 @@ body{font-family:system-ui,sans-serif;background:#020617;color:#f1f5f9}
   <button onclick="askPin('rec')" class="bg-indigo-600 px-4 py-2 rounded-full text-sm font-semibold">➕ Operator</button>
   <button onclick="askPin('admin')" class="bg-slate-700 px-4 py-2 rounded-full text-sm font-semibold">🔒 Admin</button></div>
  <h1 class="text-2xl font-black mb-1 text-center px-2">🏫 Delhi School of Brilliants</h1>
- <p class="text-slate-400 text-xs mb-3">Face Attendance Kiosk v10.1</p>
+ <p class="text-slate-400 text-xs mb-3">Face Attendance Kiosk v10.3</p>
  <div class="relative mb-3"><video id="kv" class="vc" autoplay muted playsinline></video>
   <svg class="ring" viewBox="0 0 260 260"><circle cx="130" cy="130" r="122" stroke="rgba(255,255,255,.1)"/><circle id="kr" cx="130" cy="130" r="122" stroke="#10b981" stroke-dasharray="767" stroke-dashoffset="767" style="transition:stroke-dashoffset .2s"/></svg></div>
  <div id="kname" class="mb-3 px-6 py-3 rounded-xl bg-slate-900 border border-slate-700 text-sm font-bold text-slate-300 min-w-[280px] text-center">Position face in camera...</div>
@@ -96,7 +96,7 @@ body{font-family:system-ui,sans-serif;background:#020617;color:#f1f5f9}
    <div><label class="text-xs text-slate-400">Admin WhatsApp numbers (comma separated, with country code)</label><input id="sPh" class="inp"></div>
    <div><label class="text-xs text-slate-400">X Lates = 1 half-day deduction</label><input id="sLR" type="number" min="1" class="inp"></div>
    <div><label class="text-xs text-slate-400">Salary divisor (days per month)</label><input id="sDv" type="number" min="1" class="inp"></div>
-   <div><label class="text-xs text-slate-400">IN→OUT cooldown (minutes)</label><input id="sCd" type="number" min="0" class="inp"></div>
+   <div><label class="text-xs text-slate-400">Cooldown between punches (minutes)</label><input id="sCd" type="number" min="0" class="inp"></div>
    <div id="seasonBox" class="space-y-3"></div>
    <div id="catBox"></div>
    <div><label class="text-xs text-slate-400">Face match strictness (0.40 strict … 0.55 loose, default 0.50)</label><input id="sTh" type="number" step="0.01" min="0.3" max="0.6" class="inp"></div>
@@ -237,15 +237,17 @@ const isOff=ds=>new Date(ds+'T00:00:00').getDay()===0||!!S.holidays[ds];
 function punch(id){
  if(!authed)return;
  const s=S.staff.find(x=>x.id===id);if(!s)return;
- const now=new Date(),ds=ld(now),t=hm(now),ph=toH(t);pauseUntil=Date.now()+5000;
+ const now=new Date(),ds=ld(now),t=hm(now);pauseUntil=Date.now()+5000;
  if(isOff(ds)){speak('Today is a holiday');return toast('Today is a holiday / Sunday','e')}
  A[ds]=A[ds]||{};const r=A[ds][id]||{inTime:null,outTime:null,status:'Absent'};
- const start=toH(s.customInTime||'07:30'),grace=(s.grace??30)/60;
- if(!r.inTime){r.inTime=t;r.status=classify(s,t,null,ds);speak(`Welcome ${s.name}. Attendance recorded.`);toast(`${s.name} IN at ${t}`,'s')}
- else{const mins=(now-new Date(`${ds}T${r.inTime}:00`))/60000;
-  if(mins<S.settings.cooldown){speak('Cooldown active');return toast(`${s.name}: wait ${Math.ceil(S.settings.cooldown-mins)} more min to punch OUT`,'e')}
-  r.outTime=t;if(!r.manual)r.status=classify(s,r.inTime,t,ds);
-  speak(`Goodbye ${s.name}. Out punch recorded.`);toast(`${s.name} OUT at ${t} (${r.status})`,'s')}
+ const p=pun(r).slice();
+ if(p.length){const mins=(now-new Date(`${ds}T${p[p.length-1]}:00`))/60000;
+  if(mins<S.settings.cooldown){speak('Cooldown active');return toast(`${s.name}: wait ${Math.ceil(S.settings.cooldown-mins)} more min before the next punch`,'e')}}
+ const isIn=p.length%2===0,first=p.length===0;p.push(t);
+ r.punches=p;r.inTime=p[0];r.outTime=p.length>=2?p[p.length%2===0?p.length-1:p.length-2]:null;
+ if(!r.manual)r.status=p.length%2?classify(s,p[0],null,ds):classify(s,p[0],r.outTime,ds);
+ if(isIn){speak(first?`Welcome ${s.name}. Attendance recorded.`:`Welcome back ${s.name}.`);toast(`${s.name} IN at ${t}`,'s')}
+ else{speak(`Goodbye ${s.name}. Out punch recorded.`);toast(`${s.name} OUT at ${t} (${r.status})`,'s')}
  A[ds][id]=r;saveAtt(ds,id);refreshAdmin()}
 
 /* ---------- Clock ---------- */
@@ -275,11 +277,11 @@ function renderToday(){const ds=tDate||ld(),rs=A[ds]||{};let p=0,a=0,l=0,h='';
  {const P=SP(ds);$('holNote').textContent=isOff(ds)?'🎉 '+(ds===ld()?'Today':fd(ds))+' is '+(S.holidays[ds]||'Sunday')+' (holiday)':`${seasonFor(ds)} timing: start ${P.start}, grace ${P.grace} min, closes ${P.close}`}
  S.staff.forEach(s=>{const r=rs[s.id];const st=r?r.status:'-';
   if(st==='Present')p++;else if(st==='Late'||st==='Half-Day')l++;else a++;
-  h+=`<tr><td class="p-3"><b>${esc(s.name)}</b><div class="text-xs text-slate-400">${esc(s.id)} · ${catName(s.cat)} · ${esc(s.role)}</div></td><td class="p-3 font-bold text-emerald-300">${r?.inTime||'--'}</td><td class="p-3 font-bold text-sky-300">${r?.outTime||'--'}</td><td class="p-3"><select class="bg-slate-800 border border-slate-700 rounded p-1" onchange="setStatus('${s.id}',this.value)">${['-','Present','Late','Half-Day','Absent','Auto'].map(o=>`<option value="${o}" ${o===st?'selected':''}>${o==='Auto'?'Auto (recalc)':o}</option>`).join('')}</select></td></tr>`});
+  h+=`<tr><td class="p-3"><b>${esc(s.name)}</b><div class="text-xs text-slate-400">${esc(s.id)} · ${catName(s.cat)} · ${esc(s.role)}</div>${r&&pun(r).length>2?`<div class="text-xs text-red-400">${punchText(r)}${gapMin(r)?' · gap '+hmm(gapMin(r)):''}</div>`:''}</td><td class="p-3 font-bold text-emerald-300">${r?.inTime||'--'}</td><td class="p-3 font-bold text-sky-300">${r?.outTime||'--'}</td><td class="p-3"><select class="bg-slate-800 border border-slate-700 rounded p-1" onchange="setStatus('${s.id}',this.value)">${['-','Present','Late','Half-Day','Absent','Auto'].map(o=>`<option value="${o}" ${o===st?'selected':''}>${o==='Auto'?'Auto (recalc)':o}</option>`).join('')}</select></td></tr>`});
  $('sT').textContent=S.staff.length;$('sP').textContent=p;$('sA').textContent=a;$('sL').textContent=l;
  $('todayTb').innerHTML=h||'<tr><td class="p-4 text-slate-500" colspan="4">No staff yet. Use Operator → register staff.</td></tr>'}
 window.setStatus=(id,v)=>{if(v==='-')return;const ds=tDate||ld();A[ds]=A[ds]||{};const r=A[ds][id]||{inTime:null,outTime:null};
- if(v==='Auto'){const s=S.staff.find(x=>x.id===id);r.manual=false;r.status=(s&&r.inTime)?classify(s,r.inTime,r.outTime,ds):'Absent'}
+ if(v==='Auto'){const s=S.staff.find(x=>x.id===id);r.manual=false;{const p=pun(r);r.status=(s&&p.length)?((p.length%2&&ds<ld())?'Absent':classify(s,p[0],p.length%2?null:p[p.length-1],ds)):'Absent'}}
  else{r.status=v;r.manual=true}
  r.edited=new Date().toISOString();r.by=(auth&&auth.currentUser&&auth.currentUser.email)||'';
  A[ds][id]=r;saveAtt(ds,id);toast('Status updated'+(ds!==ld()?' for '+fd(ds):''),'s');renderToday()};
@@ -296,42 +298,58 @@ function timing(s,ds){const P=SP(ds),ct=(S.settings.cat||{})[s.cat||'Teacher']||
  return{start,close,mid:toH(P.mid)+((start-toH(P.start))+(close-toH(P.close)))/2,gr:(P.grace??30)/60}}
 const seasonFor=ds=>{let c='Summer';for(const e of [...S.seasonLog].sort((a,b)=>a.from<b.from?-1:1))if(e.from<=ds)c=e.s;return c};
 const SP=ds=>S.settings.seasons[seasonFor(ds)];
-function classify(s,inT,outT,ds){const{start,close,mid,gr}=timing(s,ds||ld()),i=toH(inT);
- if(!outT)return i>=mid?'Half-Day':(i>start+gr?'Late':'Present');
- const o=Math.min(toH(outT),close);
- if(i>=mid)return o-i>=3?'Half-Day':'Absent';
- if(o>=close)return i>start+gr?'Late':'Present';
- return o>=mid?'Half-Day':'Absent'}
-function effStatus(s,ds,r){if(r.manual)return r.status;if(!r.inTime)return 'Absent';if(!r.outTime)return ds<ld()?'Absent':null;return classify(s,r.inTime,r.outTime,ds)}
-function calc(s,ym){const[y,m]=ym.split('-').map(Number),dim=new Date(y,m,0).getDate(),today=ld();const ab=[],hd=[],lt=[];let wd=0;
+/* Alphabetical order for reports: titles (Mr, Mrs, Dr, Sir, Madam...) are ignored when sorting */
+const TITLES=new Set(['mr','mrs','ms','miss','mister','dr','doctor','prof','sir','madam','madame','maam','mam','shri','smt','kumari','श्री','श्रीमती','सुश्री','डॉ','डॉक्टर','सर','मैम','मैडम']);
+const nameKey=n=>{const w=String(n||'').toLowerCase().replace(/[.,']/g,'').trim().split(/\s+/).filter(Boolean);while(w.length>1&&TITLES.has(w[0]))w.shift();while(w.length>1&&TITLES.has(w[w.length-1]))w.pop();return w.join(' ')};
+const sortedStaff=()=>[...S.staff].sort((a,b)=>nameKey(a.name).localeCompare(nameKey(b.name),undefined,{sensitivity:'base'})||String(a.id).localeCompare(String(b.id)));
+const pun=r=>Array.isArray(r.punches)&&r.punches.length?r.punches:[r.inTime,r.outTime].filter(Boolean);
+const mm=t=>{const[a,b]=t.split(':').map(Number);return a*60+b};
+const hmm=m=>Math.floor(m/60)+'h '+pad(m%60)+'m';
+function gapMin(r){const p=pun(r);let g=0;for(let k=2;k<p.length;k+=2)g+=mm(p[k])-mm(p[k-1]);return g}
+function punchText(r){const p=pun(r),o=[];for(let k=0;k<p.length;k+=2)o.push(p[k]+'-'+(p[k+1]||'...'));return o.join(', ')}
+/* Day status by hours from first IN to last OUT (OUT counted only till closing time):
+   under 3.5h = Absent, 3.5h to 4h = Half-Day, more than 4h = full day (Late if first IN after grace). Gaps between punches are NOT deducted. */
+function classify(s,inT,outT,ds){const{start,close,gr}=timing(s,ds||ld()),i=toH(inT),late=i>start+gr;
+ if(!outT)return late?'Late':'Present';
+ const m=Math.round((Math.min(toH(outT),close)-i)*60);
+ if(m<210)return 'Absent';
+ if(m<=240)return 'Half-Day';
+ return late?'Late':'Present'}
+function effStatus(s,ds,r){if(r.manual)return r.status;const p=pun(r);if(!p.length)return 'Absent';if(p.length%2===1)return ds<ld()?'Absent':null;return classify(s,p[0],p[p.length-1],ds)}
+function calc(s,ym){const[y,m]=ym.split('-').map(Number),dim=new Date(y,m,0).getDate(),today=ld();const ab=[],hd=[],lt=[],gp=[];let wd=0;
  for(let d=1;d<=dim;d++){const ds=`${ym}-${pad(d)}`;if(ds>today)break;if(s.joined&&ds<s.joined)continue;if(isOff(ds))continue;wd++;
   const r=A[ds]?.[s.id];if(!r){if(ds<today)ab.push({d:ds,note:'No punch'});continue}
-  const st=effStatus(s,ds,r);if(!st)continue;
-  if(st==='Absent')ab.push({d:ds,in:r.inTime,out:r.outTime,note:!r.inTime?'No punch':!r.outTime?'No OUT punch':'Worked too little'});
+  const gm=gapMin(r);if(gm>0)gp.push({d:ds,txt:punchText(r),gap:gm});
+  const st=effStatus(s,ds,r);if(!st)continue;const p=pun(r);
+  if(st==='Absent')ab.push({d:ds,in:r.inTime,out:r.outTime,note:!p.length?'No punch':p.length%2?'No OUT punch':'Worked too little'});
   else if(st==='Half-Day')hd.push({d:ds,in:r.inTime,out:r.outTime});
   else if(st==='Late')lt.push({d:ds,in:r.inTime,out:r.outTime})}
  const lr=Math.max(1,S.settings.lateRule||3),grp=Math.floor(lt.length/lr),ded=ab.length+hd.length*.5+grp*.5,base=s.salary||0,div=S.settings.divisor||30;
- return{ab,hd,lt,lr,grp,ded,wd,base,net:Math.max(0,Math.round(base-ded*base/div))}}
+ return{ab,hd,lt,gp,gapTotal:gp.reduce((a,x)=>a+x.gap,0),lr,grp,ded,wd,base,net:Math.max(0,Math.round(base-ded*base/div))}}
 const fd=d=>d.split('-').reverse().join('-');
-function detailRows(ym){const R=[];S.staff.forEach(s=>{const c=calc(s,ym),L=[];
+function detailRows(ym){const R=[];sortedStaff().forEach(s=>{const c=calc(s,ym),L=[];
  c.ab.forEach(x=>L.push([x.d,'Absent',x.in||'--',x.out||'--',1,x.note]));
  c.hd.forEach(x=>L.push([x.d,'Half-Day',x.in||'--',x.out||'--',.5,'Half-day deducted']));
  c.lt.forEach((x,i)=>{const k=i%c.lr+1,hit=k===c.lr;L.push([x.d,'Late',x.in||'--',x.out||'--',hit?.5:0,hit?`Late ${k} of ${c.lr} - half-day deducted`:`Late ${k} of ${c.lr}`])});
  L.sort((a,b)=>a[0]<b[0]?-1:1).forEach(l=>R.push([fd(l[0]),s.id,s.name,l[1],l[2],l[3],l[4],l[5]]))});return R}
+function gapRows(ym){const R=[];sortedStaff().forEach(s=>{calc(s,ym).gp.forEach(x=>R.push([fd(x.d),s.id,s.name,x.txt,hmm(x.gap)]))});return R}
 window.loadPay=async()=>{const ym=$('payMonth').value||ld().slice(0,7);await fetchMonth(ym);
  $('payTb').innerHTML=S.staff.map(s=>{const c=calc(s,ym),dd=a=>a.map(x=>x.d.slice(8)).join(', ');
-  const det=[c.ab.length?`<span class="text-red-400">Absent: ${dd(c.ab)}</span>`:'',c.hd.length?`<span class="text-yellow-400">Half-day: ${dd(c.hd)}</span>`:'',c.lt.length?`<span class="text-blue-400">Late: ${dd(c.lt)}${c.grp?` → -${c.grp*.5} day`:''}</span>`:''].filter(Boolean).join('<br>');
+  const det=[c.ab.length?`<span class="text-red-400">Absent: ${dd(c.ab)}</span>`:'',c.hd.length?`<span class="text-yellow-400">Half-day: ${dd(c.hd)}</span>`:'',c.lt.length?`<span class="text-blue-400">Late: ${dd(c.lt)}${c.grp?` → -${c.grp*.5} day`:''}</span>`:'',c.gp.length?`<span class="text-red-400">Gap (not deducted): ${c.gp.map(x=>x.d.slice(8)+' ('+hmm(x.gap)+')').join(', ')}</span>`:''].filter(Boolean).join('<br>');
   return`<tr><td class="p-3"><b>${esc(s.name)}</b><div class="text-xs text-slate-400">${esc(s.id)} · ${catName(s.cat)}</div></td><td class="p-3">₹${c.base}${c.base?'':' <span class="text-amber-400">⚠ set salary</span>'}</td><td class="p-3 text-xs">Abs <b class="text-red-400">${c.ab.length}</b> · HD <b class="text-yellow-400">${c.hd.length}</b> · Late <b class="text-blue-400">${c.lt.length}</b><div class="mt-1">${det}</div></td><td class="p-3 text-red-400 font-bold">${c.ded}</td><td class="p-3 text-emerald-400 font-black">₹${c.net}</td></tr>`}).join('')||'<tr><td class="p-4 text-slate-500" colspan="5">No staff</td></tr>'};
 window.dlXLSX=()=>{if(!window.XLSX)return toast('Excel library not loaded (check internet)','e');const ym=$('payMonth').value||ld().slice(0,7);
- const sum=[['ID','Name','Category','Role','Base Salary','Working Days','Absent','Half-Day','Late','Late->Half-day','Deduct Days','Deduction Rs','Net Salary']];
- S.staff.forEach(s=>{const c=calc(s,ym);sum.push([s.id,s.name,catName(s.cat),s.role,c.base,c.wd,c.ab.length,c.hd.length,c.lt.length,c.grp,c.ded,c.base-c.net,c.net])});
+ const sum=[['ID','Name','Category','Role','Base Salary','Working Days','Absent','Half-Day','Late','Late->Half-day','Deduct Days','Deduction Rs','Net Salary','Gap (hh:mm)']];
+ sortedStaff().forEach(s=>{const c=calc(s,ym);sum.push([s.id,s.name,catName(s.cat),s.role,c.base,c.wd,c.ab.length,c.hd.length,c.lt.length,c.grp,c.ded,c.base-c.net,c.net,c.gapTotal?hmm(c.gapTotal):'-'])});
  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),'Summary');
  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Date','ID','Name','Type','IN','OUT','Deduct (days)','Note'],...detailRows(ym)]),'Date-wise');
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Date','ID','Name','Punches (IN-OUT)','Gap (hh:mm) - not deducted'],...gapRows(ym)]),'Gaps');
  XLSX.writeFile(wb,`DSB_Payroll_${ym}.xlsx`);toast('Excel downloaded','s')};
 window.dlPDF=()=>{const ym=$('payMonth').value||ld().slice(0,7);const d=new window.jspdf.jsPDF('l');d.setFontSize(14);d.text(`Delhi School of Brilliants - Salary Report ${ym}`,14,14);
- d.autoTable({startY:20,styles:{fontSize:8},head:[['ID','Name','Base','Work days','Absent','Half-day','Late','Late->HD','Deduct days','Net']],body:S.staff.map(s=>{const c=calc(s,ym);return[s.id,s.name,'Rs.'+c.base,c.wd,c.ab.length,c.hd.length,c.lt.length,c.grp,c.ded,'Rs.'+c.net]})});
+ d.autoTable({startY:20,styles:{fontSize:8},head:[['ID','Name','Base','Work days','Absent','Half-day','Late','Late->HD','Deduct days','Net','Gap']],body:sortedStaff().map(s=>{const c=calc(s,ym);return[s.id,s.name,'Rs.'+c.base,c.wd,c.ab.length,c.hd.length,c.lt.length,c.grp,c.ded,'Rs.'+c.net,c.gapTotal?hmm(c.gapTotal):'-']}),didParseCell:h=>{if(h.section==='body'&&h.column.index===10&&h.cell.raw!=='-')h.cell.styles.textColor=[220,38,38]}});
  d.addPage();d.setFontSize(12);d.text('Date-wise deductions',14,14);
  d.autoTable({startY:20,styles:{fontSize:8},head:[['Date','ID','Name','Type','IN','OUT','Deduct (days)','Note']],body:detailRows(ym)});
+ {const G=gapRows(ym);if(G.length){d.addPage();d.setFontSize(12);d.text('Days with a gap between punches - NOT deducted (for your review)',14,14);
+  d.autoTable({startY:20,styles:{fontSize:8},head:[['Date','ID','Name','Punches (IN-OUT)','Gap']],body:G,didParseCell:h=>{if(h.section==='body'&&h.column.index>=3)h.cell.styles.textColor=[220,38,38]}})}}
  d.save(`DSB_Payroll_${ym}.pdf`);toast('PDF downloaded','s')};
 
 /* ---------- Staff ---------- */
@@ -345,11 +363,13 @@ window.renderStaff=()=>{const q=$('q').value.trim().toLowerCase(),qc=$('qc').val
   <label>Category<select id="ca_${s.id}" class="inp !p-1">${Object.keys(CATS).map(k=>`<option value="${k}" ${k===(s.cat||'Teacher')?'selected':''}>${CATS[k][1]}</option>`).join('')}</select></label>
   <label>IN time<input id="ci_${s.id}" type="time" value="${s.customInTime||''}" class="inp !p-1"></label>
   <label>OUT time<input id="co_${s.id}" type="time" value="${s.customOutTime||''}" class="inp !p-1"></label>
+  <label class="col-span-2">Name (with Mr/Mrs/Dr/Sir/Ma'am if wanted)<input id="nm_${s.id}" value="${esc(s.name)}" class="inp !p-1"></label>
   <label class="col-span-2">Role<input id="ro_${s.id}" value="${esc(s.role)}" class="inp !p-1"></label></div>
  <div class="text-[11px] text-slate-400 mb-2">Blank IN/OUT = default (${hmf(T.start)} – ${hmf(T.close)})</div>
  <div class="flex gap-2"><button onclick="saveStaff('${s.id}')" class="flex-1 bg-emerald-600 py-1.5 rounded font-bold text-sm">Save</button><button onclick="delStaff('${s.id}')" class="bg-red-600/30 text-red-400 px-3 rounded">🗑</button></div></div></div>`}).join('')||'<p class="text-slate-500">No staff found.</p>'};
 window.saveStaff=id=>{const s=S.staff.find(x=>x.id===id);if(!s)return;
  const i=$('ci_'+id).value,o=$('co_'+id).value;if(i&&o&&i>=o)return toast('OUT time must be after IN time','e');
+ const nm=$('nm_'+id).value.trim();if(!nm)return toast('Name cannot be empty','e');s.name=nm;
  s.salary=parseFloat($('sal_'+id).value)||0;s.cat=$('ca_'+id).value;s.customInTime=i;s.customOutTime=o;s.role=$('ro_'+id).value;saveCore();toast('Saved','s');renderStaff()};
 window.delStaff=id=>{const s=S.staff.find(x=>x.id===id);if(!s||!confirm(`Delete ${s.name}? Attendance history stays but the staff is removed.`))return;
  S.staff=S.staff.filter(x=>x.id!==id);saveCore();buildMatcher();renderStaff();toast('Deleted')};
@@ -397,7 +417,7 @@ window.restore=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader
  if(db&&authed)for(const dt in A)for(const id in A[dt])saveAtt(dt,id);
  toast('Restored','s');setTimeout(()=>location.reload(),1200)}catch(x){toast('Invalid backup file','e')}};r.readAsText(f)};
 function todayData(){const ds=ld(),rs=A[ds]||{},o={Present:[],Late:[],'Half-Day':[],Absent:[]};
- S.staff.forEach(s=>{const r=rs[s.id],st=r&&o[r.status]?r.status:'Absent';o[st].push({s,in:r?.inTime||'--',out:r?.outTime||'--'})});return{ds,o}}
+ sortedStaff().forEach(s=>{const r=rs[s.id],st=r&&o[r.status]?r.status:'Absent';o[st].push({s,in:r?.inTime||'--',out:r?.outTime||'--'})});return{ds,o}}
 function reportText(){const{ds,o}=todayData();const dn=new Date(ds+'T00:00:00').toLocaleDateString('en-IN',{weekday:'long'});
  let t=`🏫 *Delhi School of Brilliants*\n📋 *Attendance Report*\n📅 ${fd(ds)} (${dn})\n`;if(isOff(ds))t+=`🎉 Holiday: ${S.holidays[ds]||'Sunday'}\n`;
  const line=x=>`• ${x.s.name} (${x.s.id}) - IN ${x.in} | OUT ${x.out}`;

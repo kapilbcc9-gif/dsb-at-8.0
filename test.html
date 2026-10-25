@@ -44,7 +44,7 @@ body{font-family:system-ui,sans-serif;background:#020617;color:#f1f5f9}
   <button onclick="askPin('rec')" class="bg-indigo-600 px-4 py-2 rounded-full text-sm font-semibold">➕ Operator</button>
   <button onclick="askPin('admin')" class="bg-slate-700 px-4 py-2 rounded-full text-sm font-semibold">🔒 Admin</button></div>
  <h1 class="text-2xl font-black mb-1 text-center px-2">🏫 Delhi School of Brilliants</h1>
- <p class="text-slate-400 text-xs mb-3">Face Attendance Kiosk v10.3</p>
+ <p class="text-slate-400 text-xs mb-3">Face Attendance Kiosk v10.4</p>
  <div class="relative mb-3"><video id="kv" class="vc" autoplay muted playsinline></video>
   <svg class="ring" viewBox="0 0 260 260"><circle cx="130" cy="130" r="122" stroke="rgba(255,255,255,.1)"/><circle id="kr" cx="130" cy="130" r="122" stroke="#10b981" stroke-dasharray="767" stroke-dashoffset="767" style="transition:stroke-dashoffset .2s"/></svg></div>
  <div id="kname" class="mb-3 px-6 py-3 rounded-xl bg-slate-900 border border-slate-700 text-sm font-bold text-slate-300 min-w-[280px] text-center">Position face in camera...</div>
@@ -53,6 +53,7 @@ body{font-family:system-ui,sans-serif;background:#020617;color:#f1f5f9}
   <div id="cdate" class="text-slate-400 text-xs uppercase mb-3"></div>
   <button onclick="manualPunch()" class="w-full bg-blue-600 hover:bg-blue-500 py-3 rounded-xl font-black mb-2">👆 PUNCH ATTENDANCE NOW</button>
   <button id="autoBtn" onclick="toggleAuto()" class="w-full bg-slate-800 border border-slate-700 py-2 rounded-xl text-xs font-bold text-emerald-400">Face AI Auto: ACTIVE</button></div>
+ <div id="diag" onclick="cycleDet()" class="text-[10px] text-slate-500 mt-2 select-none text-center px-2">AI: starting...</div>
 </div>
 
 <!-- ADMIN -->
@@ -202,7 +203,7 @@ window.doLogin=async()=>{const e=$('lgE').value.trim(),p=$('lgP').value;if(!auth
 window.doLogout=()=>{if(auth&&confirm('Logout? Kiosk will stop until someone logs in again.'))signOut(auth)};
 
 /* ---------- Face AI ---------- */
-let ready=false,matcher=null;const MARGIN=0.08;
+let ready=false,matcher=null,tinyOK=false;const MARGIN=0.08;
 const dist=(a,b)=>{let s=0;for(let i=0;i<a.length;i++){const d=a[i]-b[i];s+=d*d}return Math.sqrt(s)};
 function buildMatcher(){const l=S.staff.filter(s=>(s.faceDescriptors||[]).length).map(s=>({id:s.id,ds:s.faceDescriptors}));matcher=l.length?l:null}
 function best(d,list){const r=list.map(p=>({id:p.id,d:Math.min(...p.ds.map(x=>dist(d,x)))}));return r.sort((a,b)=>a.d-b.d)}
@@ -210,15 +211,31 @@ function identify(d){const r=best(d,matcher);if(!r.length||r[0].d>(S.settings.th
 async function loadAI(){const t0=Date.now();while(!window.faceapi&&Date.now()-t0<20000)await new Promise(r=>setTimeout(r,200));
  try{if(!window.faceapi)throw 0;const u='https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/model/';
   await faceapi.nets.ssdMobilenetv1.loadFromUri(u);await faceapi.nets.faceLandmark68Net.loadFromUri(u);await faceapi.nets.faceRecognitionNet.loadFromUri(u);
+  try{await faceapi.nets.tinyFaceDetector.loadFromUri(u);tinyOK=true}catch(e){console.warn('tiny detector unavailable',e)}
   ready=true;buildMatcher()}catch(e){toast('AI models failed to load. Check internet & reload.','e')}
  $('loader').style.display='none';loop()}
 async function camera(v){const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:640,height:480}});v.srcObject=s;return s}
 camera($('kv')).catch(()=>toast('Camera access denied (HTTPS required)','e'));
 
 let auto=true,detId=null,streak=0,lastId=null,pauseUntil=0;
+/* Detector: 'auto' starts with the accurate SSD model and switches to the lighter Tiny model on slow phones. Tap the small grey line on the kiosk to change. */
+let detMode=localStorage.getItem('dsb_det')||'auto',curDet=detMode==='tiny'?'tiny':'ssd',dtimes=[];
+function setDiag(t){const e=$('diag');if(e)e.textContent=t}
+function backend(){try{return faceapi.tf.getBackend()}catch(e){return '?'}}
+window.cycleDet=()=>{detMode=detMode==='auto'?'tiny':detMode==='tiny'?'ssd':'auto';localStorage.setItem('dsb_det',detMode);curDet=detMode==='tiny'?'tiny':'ssd';dtimes=[];toast('Detector: '+detMode,'s')};
 async function loop(){
- try{if(ready&&authed&&matcher&&Date.now()>pauseUntil&&$('kv').readyState>=2){
-  const det=await faceapi.detectSingleFace($('kv'),new faceapi.SsdMobilenetv1Options({minConfidence:.6})).withFaceLandmarks().withFaceDescriptor();
+ let delay=250;
+ try{const v=$('kv'),why=!ready?'AI not ready':!authed?'not logged in':!matcher?'no faces registered':Date.now()<=pauseUntil?'':v.readyState<2?'camera not ready ('+v.readyState+')':'';
+ if(why)setDiag(why);
+ if(!why&&ready&&authed&&matcher&&Date.now()>pauseUntil&&v.readyState>=2){
+  const t0=performance.now(),useTiny=curDet==='tiny'&&tinyOK;
+  const opt=useTiny?new faceapi.TinyFaceDetectorOptions({inputSize:320,scoreThreshold:.4}):new faceapi.SsdMobilenetv1Options({minConfidence:.5});
+  const det=await faceapi.detectSingleFace(v,opt).withFaceLandmarks().withFaceDescriptor();
+  dtimes.push(Math.round(performance.now()-t0));if(dtimes.length>5)dtimes.shift();
+  const avg=Math.round(dtimes.reduce((a,b)=>a+b,0)/dtimes.length);
+  if(detMode==='auto'&&curDet==='ssd'&&tinyOK&&dtimes.length>=3&&avg>450){curDet='tiny';dtimes=[]}
+  setDiag(`AI ${useTiny?'tiny':'ssd'}${detMode==='auto'?' (auto)':''} · ${avg}ms · ${backend()} · ${det?'face '+Math.round(det.detection.score*100)+'%':'no face'}`);
+  delay=Math.max(250,Math.round(avg*.5));
   const nm=$('kname'),rg=$('kr');
   if(det){const m=det.detection.box.width<70?{label:'unknown'}:identify(det.descriptor);
    if(m.label!=='unknown'){detId=m.label;const s=S.staff.find(x=>x.id===detId);
@@ -227,8 +244,8 @@ async function loop(){
     else rg.style.strokeDashoffset=0;
    }else{detId=null;streak=0;lastId=null;nm.textContent=m.amb?`Unclear match (${m.d.toFixed(2)}) - look straight`:`Unknown (closest ${m.d!=null?m.d.toFixed(2):'-'}) - stand closer`;nm.className=nm.className.replace(/text-\S+/g,'')+' text-red-400';rg.style.strokeDashoffset=767}
   }else{detId=null;streak=0;lastId=null;nm.textContent='Position face in camera...';nm.className=nm.className.replace(/text-\S+/g,'')+' text-slate-300';rg.style.strokeDashoffset=767}
- }}catch(e){}
- setTimeout(loop,250)}
+ }}catch(e){setDiag('AI error: '+((e&&e.message)||e))}
+ setTimeout(loop,delay)}
 window.toggleAuto=()=>{auto=!auto;const b=$('autoBtn');b.textContent=auto?'Face AI Auto: ACTIVE':'Face AI Auto: OFF (manual)';b.className=b.className.replace(/text-(emerald|red)-400/,auto?'text-emerald-400':'text-red-400');streak=0;$('kr').style.strokeDashoffset=767}
 window.manualPunch=()=>{if(!authed)return toast('Login first','e');if(!ready)return toast('AI still loading','e');if(!S.staff.some(s=>(s.faceDescriptors||[]).length))return toast('No staff with face data. Register staff first.','e');detId?punch(detId):toast('No recognised face in camera','e')};
 
